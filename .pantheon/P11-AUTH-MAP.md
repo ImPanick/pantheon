@@ -78,18 +78,18 @@ The four tiers are `P11-02b`'s own question. A site is exactly one of them:
   ownership check or a privilege key that does not exist. The fix is a data model, not
   an auth change.
 
-derived: direct 73 · Depends 14 · total 87
+derived: direct 79 · Depends 14 · total 93
 
 ### tier summary
 
 | tier | sites |
 |---|---|
-| `superuser` | 66 |
+| `superuser` | 72 |
 | `operator` | 0 |
 | `power-user` | 0 |
 | `only-because-nothing-finer-existed` | 21 |
 
-### `superuser` — **66 superuser sites.** A credential, an execution surface, or the whole instance's data. These stay `is_admin` under any role model — `P11-02` says so in its own words: *"keep `is_admin` as the superuser role rather than replacing it"*.
+### `superuser` — **72 superuser sites.** A credential, an execution surface, or the whole instance's data. These stay `is_admin` under any role model — `P11-02` says so in its own words: *"keep `is_admin` as the superuser role rather than replacing it"*.
 
 | file | function | route | protects |
 |---|---|---|---|
@@ -101,6 +101,12 @@ derived: direct 73 · Depends 14 · total 87
 | `routes/api_token_routes.py` | `token_profiles` | `GET /api/tokens/profiles` | the scope profiles a new token can be minted against |
 | `routes/api_token_routes.py` | `update_token` | `PATCH /api/tokens/{token_id}` | re-scopes an existing credential |
 | `routes/api_token_routes.py` | `create_token` | `POST /api/tokens` | mints a bearer credential. `FORBIDDEN.md` Part 2 lists `require_admin` under privilege escalation, and this is the route that escalates |
+| `routes/apollo_routes.py` | `review_agents` | `GET /api/apollo/agents/review` | every drafted agent waiting on a decision, with the person whose goal found the gap, and every platform agent's versions |
+| `routes/apollo_routes.py` | `approve_agent` | `POST /api/apollo/agents/review/{pid}/approve` | publishes a drafted agent to the platform layer, where every account on the instance can hire it and run its runbook |
+| `routes/apollo_routes.py` | `edit_agent` | `POST /api/apollo/agents/review/{pid}/edit` | rewrites a drafted agent's file, its tools and effects included, before it is proven again |
+| `routes/apollo_routes.py` | `reject_agent` | `POST /api/apollo/agents/review/{pid}/reject` | closes another person's proposal |
+| `routes/apollo_routes.py` | `update_platform_agent` | `POST /api/apollo/agents/platform/{agent_id}/update` | stages a new version of an agent every account can hire |
+| `routes/apollo_routes.py` | `rollback_platform_agent` | `POST /api/apollo/agents/platform/{agent_id}/rollback` | changes which version of a platform agent every account's hires run |
 | `routes/backup_routes.py` | `export_data` | `GET /api/export` | one archive containing every user's memories, presets and skills |
 | `routes/backup_routes.py` | `import_data` | `POST /api/import` | replaces them from an uploaded archive |
 | `routes/cookbook_routes.py` | `get_cookbook_ssh_key` | `GET /api/cookbook/ssh-key` | reads the instance's SSH public key |
@@ -549,11 +555,11 @@ this file's hand-rolled pattern, so the population that this map covers grew by 
 the number of admin decisions added — which is the behaviour the map was built to give.
 The paragraph above is about the 107 that predate roles; the counts below are live.
 
-- **66 superuser sites do not move.** They are already right. (`B1573` took five off the tier: the
+- **72 superuser sites do not move.** They are already right. (`B1573` took five off the tier: the
   API-integration routes answer each person's own, so they ask `require_user`, § B.)
 - **An `operator` overlay on `DEFAULT_PRIVILEGES` was the phase's return, and since
   `B683` it is there:** 0 operator sites are left on `require_admin`, and none of the
-  66 superuser sites moved. The only way to let someone keep the instance up was to make
+  72 superuser sites moved. The only way to let someone keep the instance up was to make
   them the owner; now `can_run_instance` is declared, and every site of the tier asks
   `require_operator` (§ G). (Both counts in the one spelling `check-auth-map.py` checks
   wherever it appears: this sentence said *"48 gates … the 37"* through every gate

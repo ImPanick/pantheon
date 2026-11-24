@@ -1159,6 +1159,21 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 busy="The task is busy for a moment. Answer again.")
         except QuestionRefused as refused:
             raise HTTPException(refused.status, refused.sentence)
+        if outcome in ("resumed", "denied"):
+            # Apollo's trust per kind of work (phase 4): a person's answer to a
+            # lead's card is the record "just do it" is earned on.
+            def _record_trust():
+                from src.apollo import trust as _trust
+                tdb = SessionLocal()
+                try:
+                    _trust.record(tdb, owner, task_id, decision, tool)
+                    tdb.commit()
+                except Exception as err:   # the answer stands either way
+                    tdb.rollback()
+                    logger.warning("Apollo trust not recorded for %s: %s", task_id, err)
+                finally:
+                    tdb.close()
+            await asyncio.to_thread(_record_trust)
         return {"ok": True, "outcome": outcome, "sentence": verdict.sentence}
 
     @router.post("/{task_id}/clear-cache")

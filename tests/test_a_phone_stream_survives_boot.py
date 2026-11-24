@@ -78,7 +78,8 @@ def test_a_display_that_changes_size_is_resized_in_the_stream():
     boot, final = Image.new('RGB', (320, 640)), Image.new('RGB', (360, 780))
     stream = Stream(greeting(7, -224, -308) + request(320, 640) * 2 + request(360, 780))
     with pytest.raises(rfb.StreamEnded):  # the script runs out, not the display
-        rfb.serve(stream, frames((boot, 'boot'), (boot, 'boot'), (final, 'final'), (final, 'final')),
+        # A new picture each time (`final.copy()`): an unchanged one is not sent again.
+        rfb.serve(stream, frames((boot, 'boot'), (boot, 'boot'), (final, 'final'), (final.copy(), 'final')),
                   lambda _: None, lambda: None, frame_interval=0)
     output = bytes(stream.output)
     resize = (struct.pack('>HHHHi', 0, 0, 360, 780, -308) + b'\1\0\0\0'

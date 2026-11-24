@@ -385,6 +385,7 @@ function _agentCard(a, hired) {
   top.appendChild(_el('span', 'agents-avatar', _initial(a.name)));
   if (a.starred) top.appendChild(_el('span', 'agents-star', '★'));
   if (a.source === 'own') top.appendChild(_el('span', 'agents-own', 'Yours'));
+  else if (a.source === 'platform') top.appendChild(_el('span', 'agents-own agents-platform', 'Made here'));
   if (hired) top.appendChild(_el('span', 'agents-hired', 'Summoned'));
   card.appendChild(top);
   card.appendChild(_el('span', 'agents-card-name', a.name));
@@ -682,7 +683,7 @@ function _renderAgent(a) {
   words.appendChild(h);
   words.appendChild(_el('p', 'agents-page-tag', a.tagline));
   words.appendChild(_el('p', 'agents-page-meta',
-    `${a.section_label} · starts on ${a.starts_on} · version ${a.version}${a.source === 'own' ? ' · your own' : ''}`));
+    `${a.section_label} · starts on ${a.starts_on} · version ${a.version}${a.source === 'own' ? ' · your own' : (a.source === 'platform' ? ' · made on this server, approved by an admin' : '')}`));
   head.appendChild(words);
   page.appendChild(head);
 

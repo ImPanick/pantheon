@@ -139,12 +139,21 @@ def crosshair(pixel_format):
     return struct.pack('>HHHHi',10,10,21,21,-239)+pixel_bytes(image,pixel_format)+mask
 
 
-def serve(stream, frame, event, release, *, frame_interval=.25):
+# Twice the screen video's rate (`video.MAX_FPS`). Asking at the video's own
+# rate beats against it: a frame that lands just after a look waits a whole
+# interval, and the next look may skip it, so motion judders. A look that
+# finds nothing new costs 16 bytes; a frame is never sent twice.
+FRAME_INTERVAL = 1 / 60
+
+
+def serve(stream, frame, event, release, *, frame_interval=FRAME_INTERVAL):
     """`frame` returns (PIL RGB image, immutable geometry token).
 
     `event` must consult the worker's current holder every time. It receives
     the connection geometry token; this stream closes when it changes.
     `release` clears this viewer's held touches and keys on every exit path.
+    `frame` returns the same image object for an unchanged screen: an
+    incremental request for it is answered with no rectangles.
     """
     try:
         stream.write(b"RFB 003.008\n")
@@ -165,7 +174,7 @@ def serve(stream, frame, event, release, *, frame_interval=.25):
         name = b"Pantheon Android"
         pixel_format = DEFAULT_FORMAT
         stream.write(struct.pack(">HH", width, height) + pixel_format + struct.pack(">I", len(name)) + name)
-        encodings, last_frame_at = set(), 0.0
+        encodings, last_frame_at, last_image = set(), 0.0, None
         geometry_sent = False
         cursor_sent = False
         while True:
@@ -190,7 +199,7 @@ def serve(stream, frame, event, release, *, frame_interval=.25):
                 new_width, new_height = current.size
                 if not (0 < new_width <= 1280 and 0 < new_height <= 1280):
                     raise ProtocolError("The updated phone frame is outside its bound.")
-                resize = None
+                resize, changed = None, current_geometry != geometry
                 if current_geometry != geometry or current.size != (width, height):
                     # Android's display changes while it boots (the boot
                     # animation hands over; `wm size reset` at completion) and
@@ -206,6 +215,15 @@ def serve(stream, frame, event, release, *, frame_interval=.25):
                     geometry, (width, height) = current_geometry, current.size
                 if not {7, -224} <= encodings:
                     raise ProtocolError("The bundled phone viewer requires Tight JPEG and LastRect.")
+                owed = (not geometry_sent and -308 in encodings) or (not cursor_sent and -239 in encodings)
+                if incremental and not changed and resize is None and current is last_image and not owed:
+                    # Nothing changed: an update of unknown length that ends at
+                    # once (LastRect). Kasm's client reads a zero-length update's
+                    # header again after a display flush and then stops asking,
+                    # so the count is never zero.
+                    stream.write(struct.pack(">BBH", 0, 0, 0xffff) + struct.pack(">HHHHi", 0, 0, 0, 0, -224))
+                    last_frame_at = time.monotonic()
+                    continue
                 encoded = io.BytesIO()
                 current.convert("RGB").save(encoded, format="JPEG", quality=80)
                 data = encoded.getvalue()
@@ -221,27 +239,35 @@ def serve(stream, frame, event, release, *, frame_interval=.25):
                         length.append(value >> 7)
                 report_geometry = not geometry_sent and -308 in encodings
                 report_cursor = not cursor_sent and -239 in encodings
-                stream.write(struct.pack(">BBH", 0, 0, 2 + int(report_geometry) + int(report_cursor) + int(resize is not None)))
+                # The whole update is one write: one websocket message per
+                # `CHUNK`, never a run of small ones. Small writes behind a
+                # large one wait for the relay's delayed ACK (Nagle), which
+                # capped the phone near 20 fps and made it stutter (the owner,
+                # 2026-11-23: "a lot smoother but it is still very choppy").
+                update = bytearray(struct.pack(">BBH", 0, 0, 2 + int(report_geometry) + int(report_cursor)
+                                               + int(resize is not None)))
                 if resize == -308:
                     # Reason 0, status 0: the server changed its own size.
-                    stream.write(struct.pack('>HHHHi', 0, 0, width, height, -308)
-                                 + b'\1\0\0\0' + struct.pack('>IHHHHI', 0, 0, 0, width, height, 0))
+                    update += (struct.pack('>HHHHi', 0, 0, width, height, -308)
+                               + b'\1\0\0\0' + struct.pack('>IHHHHI', 0, 0, 0, width, height, 0))
                     geometry_sent = True
                 elif resize == -223:
-                    stream.write(struct.pack('>HHHHi', 0, 0, width, height, -223))
+                    update += struct.pack('>HHHHi', 0, 0, width, height, -223)
                 if report_geometry:
                     # Kasm needs ExtendedDesktopSize to distinguish physical
                     # framebuffer dimensions from its CSS viewport dimensions.
                     # Otherwise it scales pixels while sending unscaled input.
-                    stream.write(struct.pack('>HHHHi',0,0,width,height,-308)
-                                 + b'\1\0\0\0' + struct.pack('>IHHHHI',0,0,0,width,height,0))
+                    update += (struct.pack('>HHHHi', 0, 0, width, height, -308)
+                               + b'\1\0\0\0' + struct.pack('>IHHHHI', 0, 0, 0, width, height, 0))
                     geometry_sent = True
                 if report_cursor:
-                    stream.write(crosshair(pixel_format));cursor_sent=True
-                stream.write(struct.pack(">HHHHi", 0, 0, width, height, 7))
-                stream.write(b"\x90" + length + data)
-                stream.write(struct.pack(">HHHHi", 0, 0, 0, 0, -224))
-                last_frame_at = time.monotonic()
+                    update += crosshair(pixel_format)
+                    cursor_sent = True
+                update += struct.pack(">HHHHi", 0, 0, width, height, 7)
+                update += b"\x90" + length + data
+                update += struct.pack(">HHHHi", 0, 0, 0, 0, -224)
+                stream.write(bytes(update))
+                last_frame_at, last_image = time.monotonic(), current
             elif kind == 4:
                 down, padding, keysym = struct.unpack(">BHI", stream.read(7))
                 if down not in (0, 1):

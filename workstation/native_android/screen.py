@@ -56,6 +56,7 @@ class Screen:
         self.viewport=None;self.viewport_key=None;self.viewport_at=0;self.viewport_signature=None
         self.gestures={};self.key_states={};self.last_point=None
         self.stale_since=None;self.stale_said=False;self.input_said=None
+        self.video=None;self.video_serial=None  # `video.ScrcpyVideo`, set by the phone once Android is on
 
     def _who(self):
         return getattr(self.phone,'account',None)
@@ -134,7 +135,9 @@ class Screen:
             self.phone._active()
             if not self.phone.stream_ready(): raise PhoneError('unavailable','Android has no live display.')
             self.phone.touch()
-            if time.monotonic()-self.cached_at>.20:
+            image=self._video()
+            if image is not None:pass
+            elif time.monotonic()-self.cached_at>.20:
                 try:image=self.refresh()
                 except PhoneError as error:
                     # Android's display is not steady while it starts: a capture
@@ -145,7 +148,35 @@ class Screen:
                     self._stale(error.message)
                     image=self.cache;self.cached_at=time.monotonic()
             else:image=self.cache
-            return image.copy(),(self.phone.generation,self.size,self.physical)
+            # The same picture is the same object, so the stream can tell an
+            # unchanged screen from a new one and not send it again.
+            return image,(self.phone.generation,self.size,self.physical)
+
+    def _video(self):
+        """The newest frame of the phone's screen video, at the shown size.
+
+        None leaves the picture to `refresh` (screencap): before any capture
+        has measured the display, on a folded cover screen (its viewport is
+        cropped from the panel), and while the video's shape is not the
+        display's, as when it has just turned and the capture must measure it
+        again (`refresh` then renews the geometry and its input)."""
+        video=self.video
+        if video is None:return None
+        video.want()
+        if self.physical is None or self.size is None or self.cache is None:return None
+        device=P.PHONE_DEVICES.get(getattr(self.phone,'device',None),{})
+        if device.get('kind')=='foldable' and getattr(self.phone,'posture',None)=='closed':return None
+        got=video.picture()
+        if got is None:return None
+        picture,serial=got
+        if serial==self.video_serial:
+            self.cached_at=time.monotonic();return self.cache
+        (pw,ph),(vw,vh)=self.physical,picture.size
+        if abs(vw*ph-vh*pw)>.02*pw*vh:return None
+        image=picture if picture.size==self.size else picture.resize(self.size)
+        self.cache,self.cached_at,self.video_serial=image,time.monotonic(),serial
+        self._fresh()
+        return image
 
     def grab(self,fmt):
         with self.phone.lock,self.lock:

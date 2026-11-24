@@ -202,6 +202,8 @@ const _LABELS = {
   'agent-browser-modal': { label: 'Agent browser', icon: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z' },
   // `B1751`. The phone — a handset, the door's glyph (`phoneWindow.js`).
   'phone-modal':         { label: 'Phone', icon: 'M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM11 18h2' },
+  // Apollo's pane — a sun, the pane's own glyph (`apolloPane.js`).
+  'apollo-pane-modal':   { label: 'Apollo', icon: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5' },
   'design-modal':        { label: 'Design', icon: 'M12 2a10 10 0 0 0 0 20c.9 0 1.6-.7 1.6-1.6 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.7-1.6 1.6-1.6H16a6 6 0 0 0 6-6c0-5-4.5-8.6-10-8.6z' },
   // `P24-12`. The Agents hall — its glyph is the doors' (`agents/agentsWindow.js:AGENT_ICON`).
   'agents-modal':      { label: 'Agents', icon: 'M7 8h10a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-6a3 3 0 0 1 3-3zM12 4v4M9 13h.01M15 13h.01M9.5 16.5h5' },
@@ -2129,6 +2131,9 @@ const _AUTO_WIRE = {
   'agent-browser-modal':  { rail: null,             sidebar: null },
   'design-modal':         { rail: null,             sidebar: null },   // `P26-04`
   'phone-modal':          { rail: null,             sidebar: null },   // `B1751`
+  // Opened from the Apollo chat header (`assistant.js`), through
+  // `apolloPane.js:openApolloPane`.
+  'apollo-pane-modal':    { rail: null,             sidebar: null },
 };
 
 function _autoRegister(id) {

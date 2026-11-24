@@ -1990,6 +1990,266 @@ class AutoApproveAcceptance(Base):
     )
 
 
+class ApolloTask(TimestampMixin, Base):
+    """Apollo's unit of work: one goal or errand a person handed Apollo.
+
+    The outline (`pantheon/assistant-chat-outline`, settled calls 3, 8 and 9):
+    a task is its own record with a state, a next step and the one question
+    it is stuck on; each goal is run by a **lead agent** from the roster; and
+    the person sets a goal's budget under an admin cap that applies only to
+    API-billed models. The work itself runs as a hire of the lead agent, so a
+    task's runs are `ScheduledTask` runs (zones, retries, the run log, one run
+    at a time) and never a second scheduler.
+
+    `space_id` is the space the task lives in (phase 3, Spaces). NULL is the
+    person's top layer. It is a column now so Spaces needs no ALTER.
+
+    A new table, so `init_db`'s `create_all` is its whole migration.
+    """
+    __tablename__ = "apollo_tasks"
+
+    id          = Column(String, primary_key=True)
+    owner       = Column(String, nullable=False, index=True)
+    space_id    = Column(String, nullable=True, index=True)
+    parent_id   = Column(String, nullable=True, index=True)
+    title       = Column(String, nullable=False)
+    brief       = Column(Text, nullable=True)
+    #: The kind of work, in a few words ("mail reply", "cert renewal"). Trust
+    #: is earned per kind (phase 4), so it is recorded from the first task.
+    kind        = Column(String, nullable=True)
+    #: `working` | `needs_you` | `waiting` | `done` (`src.apollo.tasks.STATES`).
+    state       = Column(String, nullable=False, default="working")
+    next_step   = Column(Text, nullable=True)
+    question    = Column(Text, nullable=True)
+    outcome     = Column(Text, nullable=True)
+    lead_agent  = Column(String, nullable=True)
+    hire_id     = Column(String, nullable=True, index=True)
+    #: The task chat: an Agent-mode chat bound to this task's lead agent.
+    session_id  = Column(String, nullable=True)
+    #: Tokens this goal may spend on API-billed models; NULL is the admin cap.
+    budget_tokens = Column(Integer, nullable=True)
+    spent_tokens  = Column(Integer, nullable=False, default=0)
+    #: Who started it: `person` or `apollo`.
+    started_by  = Column(String, nullable=False, default="person")
+    done_at     = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index('ix_apollo_tasks_owner_state', 'owner', 'state', 'updated_at'),
+    )
+
+
+class ApolloNote(TimestampMixin, Base):
+    """Apollo's notebook: its working state, kept apart from what it knows.
+
+    Settled call 7: facts and rules go to Brain; working state goes here.
+    `open_loop` is something owed or promised, `talked_through` is a thing the
+    person already discussed (so a briefing never brings it back as news), and
+    `working` is a note to itself. A new table (`create_all` is its migration).
+    """
+    __tablename__ = "apollo_notes"
+
+    id        = Column(String, primary_key=True)
+    owner     = Column(String, nullable=False, index=True)
+    space_id  = Column(String, nullable=True, index=True)
+    kind      = Column(String, nullable=False, default="working")
+    text      = Column(Text, nullable=False)
+    #: `open` | `settled` | `dropped`.
+    state     = Column(String, nullable=False, default="open")
+    task_id   = Column(String, nullable=True)
+
+    __table_args__ = (
+        Index('ix_apollo_notes_owner_kind', 'owner', 'kind', 'updated_at'),
+    )
+
+
+class ApolloSpace(TimestampMixin, Base):
+    """One of a person's spaces: an area of work or life under Apollo's top layer.
+
+    The outline (*Spaces: layered chats and projects*, settled calls 11-13): a
+    space holds its own tasks, notebook, memory and Apollo chat; a sub-space
+    sees its parent; a grant gives one space read of another; an airgapped
+    space shares nothing in or out, and may be pinned to local models. Every
+    rule is enforced in `src/apollo/spaces.py`, on the server.
+
+    `session_id` is the space's own Apollo chat, made the first time it is
+    opened. A new table (`create_all` is its migration).
+    """
+    __tablename__ = "apollo_spaces"
+
+    id         = Column(String, primary_key=True)
+    owner      = Column(String, nullable=False, index=True)
+    parent_id  = Column(String, nullable=True, index=True)
+    name       = Column(String, nullable=False)
+    airgapped  = Column(Boolean, nullable=False, default=False)
+    local_only = Column(Boolean, nullable=False, default=False)
+    session_id = Column(String, nullable=True, index=True)
+
+
+class ApolloGrant(TimestampMixin, Base):
+    """One space's read of another, one way: `reader_id` may read `source_id`'s
+    `scope` (memory, files or outcomes). Read only, listed on both spaces,
+    logged on each use (`ApolloGrantUse`), revoked by setting `revoked_at`."""
+    __tablename__ = "apollo_grants"
+
+    id         = Column(String, primary_key=True)
+    owner      = Column(String, nullable=False, index=True)
+    reader_id  = Column(String, nullable=False, index=True)
+    source_id  = Column(String, nullable=False, index=True)
+    scope      = Column(String, nullable=False)
+    revoked_at = Column(DateTime, nullable=True)
+
+
+class ApolloGrantUse(Base):
+    """One use of a grant: when, and what it read (in a few words)."""
+    __tablename__ = "apollo_grant_uses"
+
+    id       = Column(String, primary_key=True)
+    owner    = Column(String, nullable=False, index=True)
+    grant_id = Column(String, nullable=False, index=True)
+    what     = Column(String, nullable=False)
+    used_at  = Column(DateTime, nullable=False, default=utcnow_naive)
+
+
+class ApolloVoice(Base):
+    """Apollo's dials per person (phase 4, `src/apollo/voice.py`): warmth
+    (terse to warm) and play (dry to playful), -2 to 2, the preset they came
+    from, and every change, the person's and Apollo's nudges, so each one can
+    be shown and undone. A new table (`create_all` is its migration)."""
+    __tablename__ = "apollo_voices"
+
+    owner   = Column(String, primary_key=True)
+    warmth  = Column(Integer, nullable=False, default=0)
+    play    = Column(Integer, nullable=False, default=0)
+    preset  = Column(String, nullable=True)
+    changes = Column(Text, nullable=False, default="[]")
+
+
+class ApolloFleetLink(Base):
+    """How a child Apollo task came to be (phase 5, the fleet): who handed it
+    on, as what (`delegate`, `ask`, `review`), who reviews it, and the ceiling
+    its lead is held to — the delegating lead's tools, nevers and asks, so a
+    delegate never gets more than the agent that handed it the work.
+
+    A task the person or Apollo started has no row. A new table, so
+    `create_all` is its whole migration.
+    """
+    __tablename__ = "apollo_fleet_links"
+
+    task_id    = Column(String, primary_key=True)
+    owner      = Column(String, nullable=False, index=True)
+    goal_id    = Column(String, nullable=False, index=True)
+    from_agent = Column(String, nullable=True)
+    via        = Column(String, nullable=False, default="delegate")
+    #: An agent id, `person`, or NULL for no review.
+    review_by  = Column(String, nullable=True)
+    #: NULL, `in_review`, `passed` or `done`.
+    stage      = Column(String, nullable=True)
+    rounds     = Column(Integer, nullable=False, default=0)
+    #: JSON `{tools, never, ask}`.
+    ceiling    = Column(Text, nullable=True)
+
+
+class ApolloMessage(Base):
+    """One typed message on a goal's log (phase 5): `ask`, `delegate`,
+    `review`, `report` or `escalate`, from one agent (or the person) to
+    another. `task_id` is the task it was said on; `child_id` the task it
+    made or came from. A report is unseen by its task's lead until a run of
+    that lead is handed it (`seen_at`)."""
+    __tablename__ = "apollo_messages"
+
+    id         = Column(String, primary_key=True)
+    owner      = Column(String, nullable=False, index=True)
+    goal_id    = Column(String, nullable=False, index=True)
+    task_id    = Column(String, nullable=False, index=True)
+    kind       = Column(String, nullable=False)
+    from_agent = Column(String, nullable=True)
+    to_agent   = Column(String, nullable=True)
+    body       = Column(Text, nullable=True)
+    child_id   = Column(String, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    seen_at    = Column(DateTime, nullable=True)
+
+
+class ApolloAgentProposal(Base):
+    """A missing agent (phase 5b, `src/apollo/gaps.py`): the gap a lead found
+    on one person's goal, the draft made for it, its proof run, and an admin's
+    decision. Only an approved one reaches anyone else, through the platform
+    layer of the catalogue. A new table, so `create_all` is its whole
+    migration."""
+    __tablename__ = "apollo_agent_proposals"
+
+    id          = Column(String, primary_key=True)
+    owner       = Column(String, nullable=False, index=True)
+    task_id     = Column(String, nullable=True)
+    from_agent  = Column(String, nullable=True)
+    need        = Column(Text, nullable=False)
+    why         = Column(Text, nullable=False)
+    #: drafting, proving, waiting, published, rejected or failed.
+    state       = Column(String, nullable=False, default="drafting", index=True)
+    sentence    = Column(Text, nullable=True)
+    agent_id    = Column(String, nullable=True)
+    agent_name  = Column(String, nullable=True)
+    version     = Column(String, nullable=True)
+    #: The drafted `AGENT.md`, and its `evals.json`.
+    text        = Column(Text, nullable=True)
+    evals       = Column(Text, nullable=True)
+    model       = Column(String, nullable=True)
+    #: JSON: the proof run's row, as `src/agents/evals.py` writes it.
+    proof       = Column(Text, nullable=True)
+    badge       = Column(String, nullable=True)
+    reviewer    = Column(String, nullable=True)
+    review_note = Column(Text, nullable=True)
+    created_at  = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at  = Column(DateTime, nullable=True)
+
+
+class ApolloTrust(Base):
+    """Trust per kind of work (phase 4, `src/apollo/trust.py`): for one person,
+    one kind of Apollo task and one action, the run of clean Allows, and
+    whether "just do it" is drafting, offered, or granted. A new table
+    (`create_all` is its migration)."""
+    __tablename__ = "apollo_trust"
+
+    id          = Column(String, primary_key=True)
+    owner       = Column(String, nullable=False, index=True)
+    kind        = Column(String, nullable=False)
+    tool        = Column(String, nullable=False)
+    space_id    = Column(String, nullable=True)
+    state       = Column(String, nullable=False, default="drafting")
+    streak      = Column(Integer, nullable=False, default=0)
+    allowed     = Column(Integer, nullable=False, default=0)
+    denied      = Column(Integer, nullable=False, default=0)
+    offered_at  = Column(DateTime, nullable=True)
+    granted_at  = Column(DateTime, nullable=True)
+    declined_at = Column(DateTime, nullable=True)
+    updated_at  = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("owner", "kind", "tool", name="uq_apollo_trust_owner_kind_tool"),
+    )
+
+
+class ApolloRhythm(Base):
+    """When Apollo speaks unasked, per person (phase 4, `src/apollo/rhythm.py`).
+
+    `briefing_ids` are the person's briefings, in time order, as daily
+    `ScheduledTask` rows bound to their Apollo; `checkin_task_id` is the one
+    check-in task, looking every `checkin_hours` (0 is off). Quiet hours are
+    local wall-clock `HH:MM`, read in Apollo's zone. `reported` is what Apollo
+    last said about each thing, so a thing is news only once it changes. A new
+    table (`create_all` is its migration)."""
+    __tablename__ = "apollo_rhythms"
+
+    owner           = Column(String, primary_key=True)
+    briefing_ids    = Column(Text, nullable=False, default="[]")
+    checkin_task_id = Column(String, nullable=True)
+    checkin_hours   = Column(Integer, nullable=False, default=3)
+    quiet_start     = Column(String, nullable=True)
+    quiet_end       = Column(String, nullable=True)
+    reported        = Column(Text, nullable=False, default="{}")
+    last_spoke_at   = Column(DateTime, nullable=True)
+
+
 class Event(Base):
     """One thing that happened, with the time it happened at (`P14-01`).
 
@@ -2104,6 +2364,40 @@ class Memory(Base):
         Index('ix_memories_lookup', 'category', 'timestamp'),  # Composite for category-based queries
         Index('ix_memories_session', 'session_id', 'timestamp'),  # Composite for session-based queries
     )
+
+def _migrate_add_apollo_space_columns():
+    """Add `space_id` to `apollo_tasks` and `apollo_notes` (Apollo phase 3,
+    Spaces).
+
+    Both tables shipped in phase 1, tagged `apollo-phase-1` on dev; an install
+    built from that tag has them without the column, and `create_all` never
+    alters an existing table. Guarded on the column list, so it's a no-op on a
+    database made after this commit. NULL is the top layer, which is where
+    every earlier task and note was.
+    """
+    import sqlite3
+    db_path = DATABASE_URL.replace("sqlite:///", "")
+    if not os.path.exists(db_path):
+        return
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        for table in ("apollo_tasks", "apollo_notes"):
+            if not list(conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,))):
+                continue        # create_all will build it complete
+            columns = [row[1] for row in conn.execute(f"PRAGMA table_info({table})")]
+            if "space_id" not in columns:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN space_id VARCHAR")
+                logging.getLogger(__name__).info(f"Migrated: added 'space_id' to {table}")
+            conn.execute(f"CREATE INDEX IF NOT EXISTS ix_{table}_space_id ON {table}(space_id)")
+        conn.commit()
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"apollo space_id migration failed: {e}")
+    finally:
+        if conn is not None:
+            conn.close()
+
 
 def _migrate_add_events_name_column():
     """Add `name` and `run_id` to events (`P14-02`, `P4-25`).
@@ -3934,6 +4228,7 @@ def init_db():
     _migrate_add_document_archived_column()
     _migrate_add_last_message_at_column()
     _migrate_add_events_name_column()
+    _migrate_add_apollo_space_columns()          # Apollo phase 3, Spaces
     _migrate_add_folder_column()
     _migrate_add_token_columns()
     _migrate_add_mode_column()

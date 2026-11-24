@@ -1806,6 +1806,20 @@ async def _execute_tool_block_impl(
         desc = f"{tool}: {first_line}" if first_line else tool
         result = await _document_tool_dispatch(tool, content, session_id, owner) \
             or {"error": f"{tool}: execution failed", "exit_code": 1}
+    elif tool == "apollo":
+        # Apollo's records (`src/apollo/tool.py`), dispatched through
+        # TOOL_HANDLERS with the owner/session ctx, as the session tools are.
+        first_line = content.split(chr(10))[0].strip()[:60]
+        desc = f"apollo: {first_line}" if first_line else "apollo"
+        result = await _document_tool_dispatch(tool, content, session_id, owner) \
+            or {"error": "apollo: execution failed", "exit_code": 1}
+    elif tool == "fleet":
+        # An Apollo lead's team (`src/apollo/fleet_tool.py`). The task comes
+        # from the run's own session, never from the arguments.
+        first_line = content.split(chr(10))[0].strip()[:60]
+        desc = f"fleet: {first_line}" if first_line else "fleet"
+        result = await _document_tool_dispatch(tool, content, session_id, owner) \
+            or {"error": "fleet: execution failed", "exit_code": 1}
     elif tool in ("create_session", "list_sessions", "send_to_session", "manage_session", "read_chat"):
         # Migrated to the agent_tools registry (#3629): dispatched through
         # TOOL_HANDLERS with the owner/session ctx these tools need. The impls

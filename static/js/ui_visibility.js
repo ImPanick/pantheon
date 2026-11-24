@@ -162,7 +162,7 @@ export const TOOL_VISIBILITY = Object.freeze({
   // `B1488`: and each a switch for everyone (`feature:`, `TOOL_FEATURES` there),
   // the column `toolOff` reads first.
   assistant: _tool({
-    label: 'Assistant', doors: ['tool-assistant-btn', 'rail-assistant'],
+    label: 'Apollo', doors: ['tool-assistant-btn', 'rail-assistant'],
     feature: 'assistant', privilege: 'can_use_assistant', ui: 'tool-assistant',
   }),
   brain: _tool({

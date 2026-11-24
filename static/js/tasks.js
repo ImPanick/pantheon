@@ -577,7 +577,7 @@ function _categoryFor(task) {
   }
   // LLM tasks → Assistant if linked to a crew member, else Other
   if (task.task_type === 'llm' || !task.task_type) {
-    return task.crew_member_id ? 'Assistant' : 'Other';
+    return task.crew_member_id ? 'Apollo' : 'Other';
   }
   return 'Other';
 }

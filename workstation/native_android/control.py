@@ -29,6 +29,22 @@ def raw_capture(adb):
     return Image.frombytes("RGBA", (width, height), data[16:]).convert("RGB")
 
 
+REMOTE = "/data/local/tmp/pantheon-scrcpy-" + SERVER_SHA256[:12] + ".jar"
+
+
+def install(adb, jar):
+    """The pinned scrcpy server on the phone, checked before and after the copy.
+
+    Control and the screen's video run the same jar; each checks it."""
+    if hashlib.sha256(Path(jar).read_bytes()).hexdigest() != SERVER_SHA256:
+        raise AdbError("The Android control server does not match its pinned digest.")
+    adb.push(Path(jar), REMOTE, timeout=20)
+    digest = adb.shell(["sha256sum", REMOTE], timeout=10).split()[0]
+    if digest != SERVER_SHA256:
+        raise AdbError("The Android control-server readback digest did not match.")
+    return REMOTE
+
+
 class ScrcpyControl:
     """Pinned control-only Android server over one authenticated ADB stream.
 
@@ -42,16 +58,11 @@ class ScrcpyControl:
         self.channel = self.context = None
         self.pid = None
         self.scid = secrets.randbelow(0x7fffffff)
-        self.remote = "/data/local/tmp/pantheon-scrcpy-" + SERVER_SHA256[:12] + ".jar"
+        self.remote = REMOTE
         self.log = "/data/local/tmp/pantheon-scrcpy-" + f"{self.scid:08x}" + ".log"
 
     def start(self):
-        if hashlib.sha256(self.jar.read_bytes()).hexdigest() != SERVER_SHA256:
-            raise AdbError("The Android control server does not match its pinned digest.")
-        self.adb.push(self.jar, self.remote, timeout=20)
-        digest = self.adb.shell(["sha256sum", self.remote], timeout=10).split()[0]
-        if digest != SERVER_SHA256:
-            raise AdbError("The Android control-server readback digest did not match.")
+        install(self.adb, self.jar)
         options = [SERVER_VERSION, f"scid={self.scid:08x}", "tunnel_forward=true", "video=false", "audio=false",
                    "control=true", "send_dummy_byte=true", "send_device_meta=false", "clipboard_autosync=false",
                    "cleanup=false", "power_on=false", "log_level=warn"]

@@ -66,7 +66,9 @@ AREAS: Tuple[Tuple[str, Dict[str, str]], ...] = (
         "suggest_document": "", "manage_documents": "", "generate_image": "", "edit_image": "",
     }),
     ("Memory, skills and chats", {
-        "manage_memory": "facts about the person", "use_skill": "open a how-to",
+        "manage_memory": "facts about the person", "apollo": "your partner's tasks and notebook",
+        "fleet": "an Apollo lead's team",
+        "use_skill": "open a how-to",
         "manage_skills": "", "search_chats": "", "read_chat": "", "list_sessions": "chats",
         "manage_session": "rename/archive chats", "create_session": "new chat",
         "send_to_session": "", "manage_rag": "knowledge base",
@@ -97,7 +99,7 @@ ALSO_KNOWN_AS: Dict[str, str] = {
     "computer": "vm virtual machine remote desktop workstation ubuntu linux screen mouse "
                 "keyboard gui firefox click screenshot phone android",
     "agent_browser": "browser website page url navigate firefox chrome",
-    "ui_control": "panel open show toggle switch theme",
+    "ui_control": "panel open show toggle switch theme point orb",
     "manage_calendar": "schedule meeting appointment event",
     "manage_notes": "todo reminder checklist",
     "manage_tasks": "automate workbench cron recurring",

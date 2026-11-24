@@ -35,9 +35,37 @@ _PREFIX = "enc:"
 _fernet: Fernet | None = None
 
 
+class KeyUnavailable(RuntimeError):
+    """`.app_key` is there and this process cannot use it.
+
+    Before this, an unreadable or damaged key surfaced only as "" from every
+    `decrypt`, so a provider's API key went out empty and the provider's own
+    401 was the first anyone heard of it (Cybertooth, 2026-11-24: LM Studio
+    "rejecting the API key" and nothing in Pantheon saying why). Raised here so
+    `decrypt` can log the real reason and `src.readiness` can fail the deploy
+    check on it. Never cached: once the file is repaired the next call uses it.
+    """
+
+
 def _load_or_create_key() -> bytes:
     if _KEY_PATH.exists():
-        return _KEY_PATH.read_bytes()
+        try:
+            key = _KEY_PATH.read_bytes()
+        except OSError as e:
+            raise KeyUnavailable(
+                f"{_KEY_PATH} exists but this process can't read it "
+                f"({e.__class__.__name__}: {e}). The saved secrets are still in "
+                "the database: give the app's user read access to that file."
+            ) from e
+        try:
+            Fernet(key)
+        except (ValueError, TypeError) as e:
+            raise KeyUnavailable(
+                f"{_KEY_PATH} is not a usable key ({e}). Restore it from a backup "
+                "of the same data folder; a new key cannot read secrets saved "
+                "with the old one."
+            ) from e
+        return key
     _KEY_PATH.parent.mkdir(parents=True, exist_ok=True)
     key = Fernet.generate_key()
     _KEY_PATH.write_bytes(key)
@@ -77,7 +105,16 @@ def decrypt(value: str) -> str:
     try:
         return _get_fernet().decrypt(value[len(_PREFIX):].encode("ascii")).decode("utf-8")
     except InvalidToken:
-        logger.error("Failed to decrypt stored secret — wrong key or corrupt token")
+        logger.error(
+            "A saved secret can't be decrypted with %s: that key file is not the "
+            "one it was saved with (replaced, regenerated, or this database came "
+            "from another data folder). It reads as empty until the original key "
+            "is restored or the secret is entered again. /api/ready names them.",
+            _KEY_PATH,
+        )
+        return ""
+    except KeyUnavailable as e:
+        logger.error("A saved secret can't be read: %s", e)
         return ""
     except Exception as e:
         logger.error(f"Decrypt failure: {e}")

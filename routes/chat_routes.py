@@ -2500,6 +2500,10 @@ def setup_chat_routes(
         # "admin" for a token. Cap it at the non-admin policy instead;
         # `stream_agent_loop` repeats this from `delegated_credential` so the
         # cap holds even for a caller that does not come through this route.
+        # The fleet is an Apollo lead's team. Only the scheduler's run of a
+        # lead gets it (`src/agents/runtime.py`, from its own plan), so a chat
+        # turn never offers it.
+        _withholds.deny({"fleet"}, WITHHELD_BY_POLICY)
         _delegated_credential = is_delegated_credential(request)
         if _delegated_credential:
             # A cap on what a minted token may do: a privilege decision, and
@@ -2552,6 +2556,8 @@ def setup_chat_routes(
                 "manage_notes", "manage_calendar", "manage_tasks",
                 "manage_workflows",   # `B1878`
                 "api_call",
+                "apollo",             # Apollo's tasks and notebook are personal
+                "fleet",              # so is an Apollo lead's team
             }, WITHHELD_BY_POLICY)
             # Composition, not a clamp: this branch denied the web tools above
             # and takes them back out when the chat's own setting enabled them.
@@ -2572,6 +2578,8 @@ def setup_chat_routes(
                 "manage_memory",      # persistent memory store
                 "search_chats",       # past chat history
                 "read_chat",          # a past chat, read through (`B1621`)
+                "apollo",             # Apollo's notebook and what it knows
+                "fleet",              # an Apollo lead's team
                 "manage_skills",      # skill presets tied to user
                 "use_skill",          # the same, read (`B1737`)
                 "create_session",
@@ -2738,6 +2746,49 @@ def setup_chat_routes(
             except SummonRefused as _refused:
                 raise HTTPException(400, _refused.sentence)
             tool_policy = _summoned.policy(tool_policy)
+        # Apollo spaces. A chat that works inside a space pinned to local
+        # models (its Apollo chat, or a task's chat there) never sends a turn
+        # to a paid API: refused before anything leaves, whoever is summoned.
+        if not incognito and _user:
+            from src.apollo import spaces as _spaces
+
+            from src.apollo.errors import ApolloRefused as _Refused
+
+            def _pinned_off_the_loop():
+                # Both the pin and whether the model is billed read the
+                # database, so both stay off the event loop.
+                _pdb = SessionLocal()
+                try:
+                    _name = _spaces.local_only_for_session(_pdb, _user, session)
+                finally:
+                    _pdb.close()
+                if _name:
+                    _spaces.require_local(_name, sess.endpoint_url)
+            try:
+                await asyncio.to_thread(_pinned_off_the_loop)
+            except _Refused as _no:
+                raise HTTPException(_no.status, _no.sentence)
+            except Exception as _pin_err:
+                logger.warning("Apollo space pin unread: %s", _pin_err)
+        # Apollo. A turn in the person's own Apollo chat carries Apollo's
+        # character and what it is holding for them (rules, open tasks, open
+        # loops), read off the loop. Nobody keeps nothing and reads nothing
+        # personal, and a summoned agent's brief is the turn's own frame.
+        _apollo_frame = []
+        if not incognito and not _summoned and _user:
+            from src.apollo import frame as _apollo
+
+            def _apollo_off_the_loop():
+                _adb = SessionLocal()
+                try:
+                    return _apollo.frame_messages(_adb, _user, session)
+                finally:
+                    _adb.close()
+            try:
+                _apollo_frame = await asyncio.to_thread(_apollo_off_the_loop)
+            except Exception as _apollo_err:   # a frame is help, never a gate
+                logger.warning("Apollo frame skipped: %s", _apollo_err)
+                _apollo_frame = []
         # `B1399`. The names the **policy layer** added on top are the policy's,
         # not the caller's — a guide-only turn disables every tool in the
         # product — so `finish` attributes them and keeps the route's own
@@ -3722,7 +3773,9 @@ def setup_chat_routes(
                     async for chunk in stream_agent_loop(
                         sess.endpoint_url,
                         sess.model,
-                        _summoned.into(messages) if _summoned else messages,
+                        (_summoned.into(messages) if _summoned
+                         else _apollo.into(messages, _apollo_frame) if _apollo_frame
+                         else messages),
                         headers=sess.headers,
                         temperature=ctx.preset.temperature,
                         max_tokens=ctx.preset.max_tokens,
@@ -3772,6 +3825,9 @@ def setup_chat_routes(
                             else (set(_summoned.tools) if _summoned else None)
                         ),
                         forced_tools=_forced_tools,
+                        # Apollo's chat keeps its own tools in reach on every
+                        # turn (`src/apollo/frame.TOOLS`): a goal names none.
+                        pinned_tools=(set(_apollo.TOOLS) if _apollo_frame and not _summoned else None),
                         uploaded_files=ctx.uploaded_files,
                         defer_context_shaping=_foreground_policy.enabled,
                         external_untrusted_context_seen=external_untrusted_context_seen,

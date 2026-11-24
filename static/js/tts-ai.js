@@ -7,6 +7,37 @@ import { playIcon, stopIcon } from './icons.js';
 import { markUnreached, quietIfUnreached } from './presets.js';   // `B1256`
 import { speakableText } from './speechText.js';   // `B1718`
 
+// Apollo's orb (phase 6) ripples while a reply is read aloud: it hears that
+// here. `pantheon:speaking` says when a voice starts and stops, with the audio
+// element when there is one, so the orb can follow its loudness.
+function _speaking(active, audio = null) {
+    try {
+        window.dispatchEvent(new CustomEvent('pantheon:speaking', { detail: { active: !!active, audio } }));
+    } catch (_) { /* a listener that throws is its own problem */ }
+}
+
+/** Tell the orb when `audio` plays and stops. */
+export function watchSpeaking(audio) {
+    if (!audio || typeof audio.addEventListener !== 'function') return audio;
+    audio.addEventListener('playing', () => _speaking(true, audio));
+    for (const t of ['pause', 'ended', 'error']) audio.addEventListener(t, () => _speaking(false));
+    return audio;
+}
+
+/** The same for the browser's own voice. */
+export function watchUtterance(u) {
+    if (!u) return u;
+    const was = { start: u.onstart, end: u.onend, error: u.onerror };
+    if (typeof u.addEventListener === 'function') {
+        u.addEventListener('start', () => _speaking(true));
+        u.addEventListener('end', () => _speaking(false));
+        u.addEventListener('error', () => _speaking(false));
+    } else {
+        u.onstart = (e) => { _speaking(true); if (was.start) was.start(e); };
+    }
+    return u;
+}
+
 class AITTSManager {
     constructor() {
         this.currentAudio = null;
@@ -219,7 +250,7 @@ class AITTSManager {
         try {
             const audioUrl = await this.synthesize(text);
 
-            this.currentAudio = new Audio(audioUrl);
+            this.currentAudio = watchSpeaking(new Audio(audioUrl));
             await this.currentAudio.play();
             this.isPlaying = true;
             // Note: onended should be set by the caller (addAITTSButton)
@@ -233,7 +264,7 @@ class AITTSManager {
 
     _playBrowser(plainText) {
         return new Promise((resolve, reject) => {
-            const utterance = new SpeechSynthesisUtterance(plainText);
+            const utterance = watchUtterance(new SpeechSynthesisUtterance(plainText));
             const voice = this._findBrowserVoice();
             if (voice) utterance.voice = voice;
             utterance.rate = this.playbackSpeed;
@@ -343,7 +374,7 @@ class AITTSManager {
                 }
 
                 await new Promise((resolve, reject) => {
-                    const audio = new Audio(audioUrl);
+                    const audio = watchSpeaking(new Audio(audioUrl));
                     if (this._provider === 'local' && this.playbackSpeed !== 1) {
                         audio.playbackRate = this.playbackSpeed;
                     }

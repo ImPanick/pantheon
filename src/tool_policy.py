@@ -134,6 +134,8 @@ _COMMON_TOOL_NAMES = {
     "resolve_contact",
     "search_chats",
     "read_chat",          # `B1621`
+    "apollo",             # Apollo's tasks, notebook and what it knows
+    "fleet",              # an Apollo lead's team (`src/apollo/fleet_tool.py`)
     "search_hf_models",
     "send_email",
     "send_to_session",

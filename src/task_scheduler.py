@@ -5617,9 +5617,38 @@ class TaskScheduler:
             return "No unread emails"
         return "\n".join(lines[:10])
 
+    def _apollo_checkin(self, task, crew, db, run_id: str | None = None) -> str:
+        """Apollo's check-in: speaks into the Apollo chat only when something
+        changed since it last spoke, and never in quiet hours. No model; the
+        run's result says what it did, so a silent check-in is still seen in
+        the run log."""
+        from src.apollo import chat as _chat, rhythm as _rhythm
+        tz_name = getattr(crew, "timezone", None) or _resolve_task_timezone(db, task)
+        message, line = _rhythm.checkin(db, task.owner, tz_name)
+        db.commit()
+        if message:
+            _chat.post_line(self._session_manager, task.owner, message, {"apollo": "checkin"})
+        self._record_run_step(run_id, kind="progress", detail=line)
+        return line
+
+    async def _apollo_briefing(self, task, crew, db, session_id: str, endpoint_url: str,
+                               model: str, run_id: str | None = None) -> str:
+        """One of the person's briefings: the assistant's check-in data (calendar,
+        notes, integrations) plus Apollo's own section, written by the model.
+        What it covered is remembered, so the next check-in doesn't repeat it."""
+        from src.apollo import rhythm as _rhythm
+        r = _rhythm.row(db, task.owner)
+        d = _rhythm.digest(db, task.owner, since=r.last_spoke_at, reported=_rhythm.reported_of(r))
+        out = await self._execute_checkin(task, crew, db, session_id, endpoint_url, model,
+                                          run_id=run_id, apollo_section=_rhythm.section(d))
+        _rhythm.remember_spoke(db, task.owner, d["reported"])
+        db.commit()
+        return out
+
     async def _execute_checkin(self, task, crew, db, session_id: str,
                                endpoint_url: str, model: str,
-                               run_id: str | None = None) -> str:
+                               run_id: str | None = None,
+                               apollo_section: str | None = None) -> str:
         """Gather raw data from all integrations, hand it to the LLM to write the check-in."""
         from src.tool_implementations import do_manage_notes
         from src.tool_utils import get_mcp_manager
@@ -5782,6 +5811,8 @@ class TaskScheduler:
         data_dump = f"Current time: {time_str}\n\n"
         for key, val in raw.items():
             data_dump += f"--- {key} ---\n{val}\n\n"
+        if apollo_section:
+            data_dump += f"--- Apollo's own work ---\n{apollo_section}\n\n"
 
         context = (
             data_dump +
@@ -5930,6 +5961,8 @@ class TaskScheduler:
         card = waiting.get("card") if isinstance(waiting.get("card"), dict) else {}
         tool = (waiting.get("tool_label") or waiting.get("tool")
                 or (card.get("action") or {}).get("tool") or "an action")
+        if self._apollo_just_does_it(db, task, run_id, waiting, tool):
+            return
         self.add_notification(
             task.name, "waiting", task.id, owner=task.owner,
             body=f"“{task.name}” is waiting for your yes: {tool}.",
@@ -5938,6 +5971,49 @@ class TaskScheduler:
                     "label": task.name, "since": (wr.waiting_of(rec) or {}).get("since"),
                     "tool_label": waiting.get("tool_label") or None,
                     "approval": card or None})
+
+    def _apollo_just_does_it(self, db, task, run_id: str, waiting: dict, tool: str) -> bool:
+        """Apollo's earned "just do it" (phase 4, `src/apollo/trust.py`): when the
+        person granted it for this kind of work and this action, and still holds
+        the admin's ceiling (`can_auto_approve`, asked now), the card is answered
+        Allow once through the run's own door, saying who and why. True when it
+        will be; the person is then not asked."""
+        try:
+            from src.apollo import trust as _trust
+            from src.approval_mode import may_use_auto
+            kind = _trust.granted_kind(db, task.owner, task.id, tool)
+            if not kind or not may_use_auto(task.owner):
+                return False
+        except Exception as err:
+            logger.warning("Apollo trust unread for %s: %s", task.id, err)
+            return False
+        approval_id, session = waiting.get("approval_id"), waiting.get("session_id") or ""
+        if not approval_id:
+            return False
+        tz_name = _resolve_task_timezone(db, task)
+        self._record_run_step(run_id, kind="progress",
+                              detail=f"You let Apollo just do {tool} for {kind}, so it's allowing it.")
+
+        async def _answer():
+            for _ in range(40):
+                try:
+                    await self.answer_question(
+                        task_id=task.id, run_id=run_id, node_id=PLAIN_TASK_NODE, item=None,
+                        approval_id=approval_id, decision="approve_task", owner=task.owner,
+                        session=session, tool=tool, who=f"Apollo (you let it just do this for {kind})",
+                        tz_name=tz_name, busy="busy")
+                    return
+                except QuestionRefused as refused:
+                    if refused.status != 409:
+                        logger.warning("Apollo could not answer %s: %s", run_id, refused.sentence)
+                        return
+                await asyncio.sleep(0.25)    # the run is still letting go of its claim
+            logger.warning("Apollo could not answer %s: the task stayed busy", run_id)
+        try:
+            asyncio.get_running_loop().create_task(_answer())
+        except RuntimeError:
+            return False
+        return True
 
     async def _execute_llm_task(self, task, db, run_id: str | None = None) -> str:
         """Execute an LLM task with full tool access via the agent loop.
@@ -5957,6 +6033,19 @@ class TaskScheduler:
                 crew = db.query(CrewMember).filter(CrewMember.id == task.crew_member_id).first()
             except Exception:
                 crew = None
+
+        # Apollo's rhythm (phase 4, `src/apollo/rhythm.py`): which of the
+        # person's briefings or their check-in this task is, by Apollo's own
+        # record and never by its name. A check-in is decided with no model.
+        apollo_kind = None
+        if crew is not None and getattr(crew, "is_default_assistant", False) and db is not None:
+            try:
+                from src.apollo import rhythm as _rhythm
+                apollo_kind = _rhythm.kind_of(db, task)
+            except Exception as _rh_err:
+                logger.warning("Apollo rhythm unread for task %s: %s", task.id, _rh_err)
+        if apollo_kind == "checkin":
+            return self._apollo_checkin(task, crew, db, run_id)
 
         # `P24-05`. A hired agent's task: its whole run is assembled from the
         # hire and its manifest here, at the moment it starts. `None` for every
@@ -6036,6 +6125,9 @@ class TaskScheduler:
 
         # For assistant check-ins: call each tool directly and post results
         # as separate messages. More reliable than hoping the model calls tools.
+        if apollo_kind == "briefing":
+            return await self._apollo_briefing(task, crew, db, session_id, endpoint_url, model,
+                                               run_id=run_id)
         is_checkin = crew and crew.is_default_assistant and "check-in" in (task.name or "").lower()
         if is_checkin:
             return await self._execute_checkin(task, crew, db, session_id, endpoint_url, model,
@@ -6238,6 +6330,19 @@ class TaskScheduler:
                                         checks=checks, repaired=repaired)
             except Exception:
                 logger.warning("Could not keep the report for %s's run", task.name, exc_info=True)
+            # Apollo. A run that leads one of the person's Apollo goals moves
+            # that goal on (Done, or Needs you with the one question), charges
+            # its tokens to the goal when the model is API-billed, and leaves
+            # one line in their Apollo chat. Every other run is untouched.
+            try:
+                from src.apollo import runs as _apollo_runs
+                _apollo_runs.report_landed(db, task, run_id, result or "", checks=checks,
+                                           endpoint_url=endpoint_url,
+                                           post=self._post_to_apollo,
+                                           start=lambda nxt, _rid=run_id: asyncio.create_task(
+                                               self._start_apollo_after(_rid, nxt)))
+            except Exception:
+                logger.warning("Could not move the Apollo task for %s's run", task.name, exc_info=True)
             if _agent_rt.failed(checks):
                 from src.agents import hires as _hires
                 sentence = _agent_rt.undelivered_sentence(agent_plan.name, checks)
@@ -6248,6 +6353,29 @@ class TaskScheduler:
                 raise _agent_rt.AgentDidNotDeliver(sentence)
 
         return result
+
+    async def _start_apollo_after(self, run_id, next_task_id: str, *, wait: float = 120.0) -> bool:
+        """Phase 5. The fleet's next run for an Apollo goal — a delegate, a
+        reviewer, or the lead again with its team's reports — started once
+        this run has let go of its slot, so a lead that re-runs itself never
+        overlaps its own finishing run. Started as the person's, as every
+        Apollo run is (`src/apollo/tool.py:start_run`)."""
+        from src.interactive_gate import STARTED_BY_PERSON
+        waited = 0.0
+        while run_id is not None and run_id in self._runs() and waited < wait:
+            await asyncio.sleep(0.25)
+            waited += 0.25
+        try:
+            return bool(await self.run_task_now(next_task_id, force=True, started_by=STARTED_BY_PERSON))
+        except Exception:
+            logger.warning("Could not start the Apollo fleet's next run %s", next_task_id, exc_info=True)
+            return False
+
+    def _post_to_apollo(self, owner: str, line: str, meta: dict) -> None:
+        """One line from Apollo into `owner`'s Apollo chat. Silent when they
+        have no Apollo chat yet — the task's own record still says it."""
+        from src.apollo.chat import post_line
+        post_line(self._session_manager, owner, line, meta)
 
     async def _deliver_task_result(self, task, result: str, db, model: str = None):
         """Deliver a completed task result according to output_target.
@@ -9574,6 +9702,7 @@ class TaskScheduler:
             return
         from core.database import SessionLocal, CrewMember, ScheduledTask
         from core.database import Session as DbSession
+        from src.apollo import APOLLO_NAME
 
         db = SessionLocal()
         try:
@@ -9582,6 +9711,11 @@ class TaskScheduler:
                 CrewMember.is_default_assistant == True,  # noqa: E712
             ).first()
             if existing:
+                # The Assistant is Apollo now. A name the person chose stays;
+                # the old default name, on the crew member and its chat, moves.
+                from src.apollo.seed import become_apollo
+                if become_apollo(db, existing):
+                    db.commit()
                 return  # already seeded
 
             # Resolve a default model/endpoint from any existing session so the
@@ -9589,7 +9723,7 @@ class TaskScheduler:
             endpoint_url, model = self._resolve_defaults(db, owner)
 
             default_personality = (
-                "You are the user's personal assistant. Concise, warm, a little dry. "
+                "You are Apollo, the user's partner in Pantheon. Concise, warm, a little dry. "
                 "Never waste time with fluff. Default to English. Only match the other language when replying to a non-English email.\n\n"
 
                 "CORE RULE: You MUST use your tools to take action — do not describe what you would do. "
@@ -9637,8 +9771,8 @@ class TaskScheduler:
                 "- Before starting a complex task, check manage_skills for an existing procedure.\n\n"
 
                 "AUTONOMY RULES:\n"
-                "- Auto-add calendar events from clear meeting invitations (mention what you added)\n"
-                "- Auto-draft email replies (cached for when user clicks Reply)\n"
+                "- Draft by default: prepare the calendar event or the reply, and let the person approve it\n"
+                "- Real work that takes more than a turn becomes a task with the apollo tool\n"
                 "- NEVER send emails without explicit user instruction\n"
                 "- NEVER delete anything without explicit instruction\n"
                 "- If uncertain, ask rather than guess"
@@ -9648,7 +9782,7 @@ class TaskScheduler:
             session_id = str(uuid.uuid4())
             sess = DbSession(
                 id=session_id,
-                name="Assistant",
+                name=APOLLO_NAME,
                 endpoint_url=endpoint_url or "",
                 model=model or "",
                 owner=owner,
@@ -9666,7 +9800,7 @@ class TaskScheduler:
             assistant = CrewMember(
                 id=crew_id,
                 owner=owner,
-                name="Assistant",
+                name=APOLLO_NAME,
                 avatar=None,
                 personality=default_personality,
                 model=model,
@@ -9680,7 +9814,7 @@ class TaskScheduler:
                     "create_document", "update_document", "edit_document",
                     "generate_image", "trigger_research",
                     "download_model", "serve_model", "list_served_models", "stop_served_model",
-                    "edit_image",
+                    "edit_image", "apollo",
                 ]),
                 session_id=session_id,
                 # (`B1480` retired `is_active` and `sort_order`: this was the

@@ -26,7 +26,7 @@ export async function openAssistantChat() {
   try {
     const info = await _fetchJSON(`${API}/session`);
     if (!info?.session_id) {
-      uiModule.showToast('The Assistant chat is not available');
+      uiModule.showToast('The Apollo chat is not available');
       return;
     }
     await selectSession(info.session_id);
@@ -97,7 +97,7 @@ function _ensureModalEl() {
       <div class="modal-header">
         <h4>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
-          Assistant settings
+          Apollo settings
         </h4>
         <button class="close-btn" id="assistant-settings-close" aria-label="Close">✖</button>
       </div>
@@ -124,7 +124,7 @@ function _esc(s) {
 const TOOL_GROUPS = {
   'Email': ['list_emails', 'read_email', 'send_email', 'reply_to_email', 'archive_email', 'delete_email', 'mark_email_read'],
   'Calendar & Notes': ['manage_calendar', 'manage_notes', 'manage_tasks'],
-  'Knowledge': ['web_search', 'read_file', 'manage_memory', 'manage_rag', 'search_chats', 'read_chat'],
+  'Knowledge': ['web_search', 'read_file', 'manage_memory', 'manage_rag', 'search_chats', 'read_chat', 'apollo'],
   'Code': ['bash', 'python', 'write_file'],
   'Documents': ['create_document', 'edit_document', 'update_document', 'suggest_document'],
   'AI & Models': ['chat_with_model', 'ask_teacher', 'pipeline', 'list_models', 'generate_image'],
@@ -177,7 +177,7 @@ function _renderSettingsBody(body, data, tzList) {
     <div class="assistant-settings-form">
       <label class="assistant-field">
         <span>Name</span>
-        <input type="text" id="assistant-name" value="${_esc(crew.name)}" placeholder="Assistant" />
+        <input type="text" id="assistant-name" value="${_esc(crew.name)}" placeholder="Apollo" />
       </label>
       <div class="assistant-field">
         <span style="display:flex;align-items:center;gap:8px;">Personality
@@ -361,7 +361,7 @@ function _renderSettingsBody(body, data, tzList) {
     };
     try {
       await _saveSettings(payload);
-      uiModule.showToast('Assistant settings saved');
+      uiModule.showToast('Apollo settings saved');
       _closeModal();
     } catch (e) {
       console.error(e);
@@ -438,23 +438,46 @@ async function _ensureHeaderAffordances(sessionId) {
   // switched off for this person or everyone each ask was a 403 (and, failing,
   // was never cached, so the next switch asked again).
   if (!(await toolPollMayAsk('assistant'))) return;
+  let isApollo = false;
+  let space;            // a space's id when this is that space's Apollo chat
   try {
     const settings = await _getSettings();
-    if (settings?.crew?.session_id !== sessionId) return;
+    isApollo = settings?.crew?.session_id === sessionId;
+    if (!isApollo) {
+      // Each of the person's spaces has its own Apollo chat (Spaces, phase 3).
+      const Sp = await import('./apolloSpaces.js');
+      space = await Sp.spaceOfSession(sessionId);
+      isApollo = space !== undefined;
+    }
   } catch {
     return;
   }
-  const headerRight = document.querySelector('.chat-header-right, #chat-header .actions, .chat-header');
-  if (!headerRight) return;
-  if (headerRight.querySelector('#assistant-header-gear')) return;
-  const gear = document.createElement('button');
-  gear.id = 'assistant-header-gear';
-  gear.type = 'button';
-  gear.title = 'Assistant settings';
-  gear.className = 'chat-header-btn';
-  gear.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
-  gear.addEventListener('click', openAssistantSettings);
-  headerRight.appendChild(gear);
+  _markApolloChat(isApollo);
+  if (!isApollo) return;
+  import('./apolloSpaces.js').then((Sp) => Sp.noteSpace(space || null)).catch(() => {});
+  // Apollo's own page (`apolloView.js`): its bar, pane, controls and empty
+  // state. The bar holds the Space switcher, the pane button and the gear that
+  // used to be mounted into a chat header this page does not have.
+  // Its bar also holds New conversation and Earlier (`apolloConversations.js`).
+  Promise.all([import('./apolloView.js'), import('./apolloConversations.js')]).then(([V, Cv]) => V.enterApolloView({
+    openSettings: openAssistantSettings,
+    // Apollo moves to the new chat: drop the cached settings, which name the
+    // old one, so the check above recognises the new chat as Apollo's.
+    extraButtons: Cv.barButtons({ onFresh: () => { _cachedSettings = null; } }),
+  })).catch((e) => console.error('Apollo view failed:', e));
+}
+
+// Apollo's pane (`apolloPane.js`) shows only from the Apollo chat (the
+// outline's first settled call): the workspace dock gets its tab
+// (`html.apollo-chat`), and leaving the chat puts the generic page back.
+function _markApolloChat(isApollo) {
+  const root = document.documentElement;
+  if (!root || !root.classList) return;
+  const was = root.classList.contains('apollo-chat');
+  root.classList.toggle('apollo-chat', isApollo);
+  // Apollo's orb floats over the page while its chat is open (phase 6).
+  if (isApollo || was) import('./apolloOrb.js').then((o) => o.setApolloChat(isApollo)).catch(() => {});
+  if (!isApollo && was) import('./apolloView.js').then((V) => V.leaveApolloView()).catch(() => {});
 }
 
 // `H02`. The gear appears when the assistant session becomes the open one,

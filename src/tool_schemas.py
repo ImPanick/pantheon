@@ -362,6 +362,58 @@ FUNCTION_TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "apollo",
+            "description": "Apollo's own records for the person you work for: tasks (goals and errands, each led by an agent from the roster), the notebook (open loops, things already talked through) and what Apollo knows about them (stated or inferred). Use it to turn real work into a task instead of doing it inline, to ask the one question a task is stuck on, and to keep what you learn. The owner is always the signed-in person.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["status", "create_task", "start_task", "update_task", "ask", "note", "settle_note", "remember", "confirm", "forget", "knows", "nudge_voice"], "description": "What to do"},
+                    "id": {"type": "string", "description": "A task's id (start_task, update_task, ask), a note's (settle_note) or a known line's (confirm, forget)"},
+                    "title": {"type": "string", "description": "create_task/update_task: the task in a few words"},
+                    "brief": {"type": "string", "description": "create_task/update_task: what done looks like, and anything the lead needs to know"},
+                    "kind": {"type": "string", "description": "create_task: the kind of work in a few words (mail reply, cert renewal)"},
+                    "lead_agent": {"type": "string", "description": "create_task/update_task: an agent id from the roster to lead it; leave out to let Pantheon pick by fit"},
+                    "budget_tokens": {"type": "integer", "description": "create_task/update_task: tokens it may spend on paid models (local models are never capped)"},
+                    "start": {"type": "boolean", "description": "create_task: start the lead now (default true)"},
+                    "state": {"type": "string", "enum": ["working", "needs_you", "waiting", "done", "open", "settled", "dropped"], "description": "update_task: working, needs_you, waiting or done; settle_note: settled or dropped"},
+                    "question": {"type": "string", "description": "ask (or update_task to needs_you): the one question the task is stuck on"},
+                    "next_step": {"type": "string", "description": "update_task: the next step, in a line"},
+                    "outcome": {"type": "string", "description": "update_task to done: the outcome, in a line"},
+                    "text": {"type": "string", "description": "note/remember: the line, in the person's words where they said it"},
+                    "basis": {"type": "string", "enum": ["stated", "inferred"], "description": "remember: stated (they said it) or inferred (you noticed it; needs evidence)"},
+                    "category": {"type": "string", "enum": ["fact", "rule", "preference"], "description": "remember: a fact, a rule they gave, or a preference"},
+                    "evidence": {"type": "string", "description": "remember inferred: what you saw that suggests it, in a few words"},
+                    "task_id": {"type": "string", "description": "note: the task the note is about"},
+                    "toward": {"type": "string", "enum": ["terse", "warm", "dry", "playful", "fewer", "more"], "description": "nudge_voice: which end to move one step toward (fewer/more are check-ins)"},
+                    "reason": {"type": "string", "description": "nudge_voice: what the person did that suggests it, in a line; they see it and can undo"}
+                },
+                "required": ["action"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "fleet",
+            "description": "Your team, while you lead one of the person's Apollo tasks: find agents in the roster that fit a need, hand one a sub-task, ask one a single question, put a decision only the person can make to them, or, when no agent fits, propose the missing one for an admin to approve. A delegate gets no more tools than you hold. Its report comes back to you as a new run.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["roster", "delegate", "ask", "escalate", "propose_agent"], "description": "What to do"},
+                    "need": {"type": "string", "description": "roster: the kind of help you need, in a few words; propose_agent: the job the missing agent would do"},
+                    "why": {"type": "string", "description": "propose_agent: why no agent in the roster fits it"},
+                    "agent": {"type": "string", "description": "delegate/ask: the agent's id from roster"},
+                    "brief": {"type": "string", "description": "delegate: what done looks like and what the agent needs to know"},
+                    "review_by": {"type": "string", "description": "delegate: an agent id to review the work, or person to have the person check it; leave out for no review"},
+                    "question": {"type": "string", "description": "ask: the one question; escalate: the decision or yes only the person can give"}
+                },
+                "required": ["action"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "chat_with_model",
             "description": "Send a message to another AI model and get its response. Use for getting a second opinion, delegating subtasks, or AI-to-AI communication.",
             "parameters": {
@@ -836,11 +888,11 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "ui_control",
-            "description": "Control the user interface. Actions: toggle (turn tools on/off), open_panel (open a modal: documents/library, gallery, email, sessions, notes, memories/brain, skills, settings, forge (alias: cookbook)), open_email_reply (open an email reply draft document; DOES NOT send. For 'write/draft a reply saying X', include body with the drafted reply), set_mode, switch_model, set_theme (built-in presets: dark, light, midnight, paper, forest, ocean, ume, copper, organs, lavender, gpt, claude, cute, guild, codehost, grove, notebook, channel, video, mintchat), create_theme (CREATE any custom theme with a name + colors object — pick distinctive, evocative hex colors that match the requested aesthetic, NOT generic defaults. The theme auto-applies after creation). When a user asks for ANY theme not in the built-in preset list, ALWAYS use create_theme.",
+            "description": "Control the user interface. Actions: toggle (turn tools on/off), open_panel (open a modal: documents/library, gallery, email, sessions, notes, memories/brain, skills, settings, forge (alias: cookbook)), open_email_reply (open an email reply draft document; DOES NOT send. For 'write/draft a reply saying X', include body with the drafted reply), set_mode, switch_model, set_theme (built-in presets: dark, light, midnight, paper, forest, ocean, ume, copper, organs, lavender, gpt, claude, cute, guild, codehost, grove, notebook, channel, video, mintchat), create_theme (CREATE any custom theme with a name + colors object — pick distinctive, evocative hex colors that match the requested aesthetic, NOT generic defaults. The theme auto-applies after creation), show (move Apollo's orb to point at something on the person's screen: name is the place — home, pane, needs_you, activity, task (value: task id), chat_input, code (value: which code block, 1 = newest), view (value: a code view's name); lines marks a line range in code or a view; label is one short line shown beside the orb). When a user asks for ANY theme not in the built-in preset list, ALWAYS use create_theme.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "action": {"type": "string", "enum": ["toggle", "open_panel", "open_email_reply", "set_mode", "switch_model", "set_theme", "create_theme", "get_toggles"],
+                    "action": {"type": "string", "enum": ["toggle", "open_panel", "open_email_reply", "set_mode", "switch_model", "set_theme", "create_theme", "get_toggles", "show"],
                                "description": "The UI action. Use set_theme for presets, create_theme to build a custom theme with any hex colors"},
                     "name": {"type": "string", "description": "For toggle: web, bash, research, incognito (aliases: shell, search, deepresearch). For open_panel: documents, gallery, email, sessions, notes, brain/memories, skills, settings, forge (alias: cookbook), workbench (value: a workflow_id). For open_email_reply: email UID. For set_theme: a preset theme name. For create_theme: the custom theme name."},
                     "value": {"type": "string", "description": "Value: on/off for toggle, agent/chat for set_mode, model name for switch_model, theme name for set_theme, or folder for open_email_reply"},
@@ -848,6 +900,8 @@ FUNCTION_TOOL_SCHEMAS = [
                     "folder": {"type": "string", "description": "Email folder for open_email_reply (default INBOX)"},
                     "mode": {"type": "string", "description": "Reply draft mode for open_email_reply: reply, reply-all, or ai-reply"},
                     "body": {"type": "string", "description": "For open_email_reply: reply body to pre-fill. Required whenever the user told you what the reply should say. Opens a draft, does not send."},
+                    "lines": {"type": "string", "description": "For show: the line range to mark in code or a view, like 12-18"},
+                    "label": {"type": "string", "description": "For show: one short line shown beside the orb"},
                     "colors": {"type": "object", "description": "For create_theme: the theme colors",
                                "properties": {
                                    "bg": {"type": "string", "description": "Background color (hex, e.g. #1a1a2e)"},
@@ -2555,6 +2609,10 @@ def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock
         content = args.get("query", "")
     elif tool_type == "read_chat":
         content = json.dumps(args)      # `B1621`: `session_tools._read_chat_args` reads it
+    elif tool_type == "apollo":
+        content = json.dumps(args)      # `src/apollo/tool.py` reads it
+    elif tool_type == "fleet":
+        content = json.dumps(args)      # `src/apollo/fleet_tool.py` reads it
     elif tool_type == "chat_with_model":
         content = args.get("model", "") + "\n" + args.get("message", "")
     elif tool_type == "create_session":
@@ -2626,6 +2684,9 @@ def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock
             body = args.get("body") or args.get("extra") or args.get("content") or ""
             if body:
                 content += f" {body}"
+        elif action == "show":
+            from src.apollo.orb import show_content
+            content = show_content(args)
         elif action == "set_mode":
             content = f"set_mode {value or name}"
         elif action == "switch_model":

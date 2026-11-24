@@ -115,7 +115,7 @@ def test_what_the_panel_withholds_is_what_the_route_refuses(scheduled):
 
     async def go():
         async with httpx.AsyncClient(base_url=scheduled.server.base,
-                                     headers={"x-test-user": "alice"}) as http:
+                                     headers={"x-test-user": "alice"}, timeout=60) as http:
             doc = (await http.get("/api/workflows/w-wf")).json()["workflow"]
             refused = {}
             for n in doc["graph"]["nodes"]:

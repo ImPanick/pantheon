@@ -294,7 +294,8 @@ def test_a_pointer_at_or_past_the_edge_is_the_edge_not_the_end_of_the_stream():
                     + request(320, 640))
     events = []
     with pytest.raises(rfb.StreamEnded):  # the script runs out; no pointer ended it
-        rfb.serve(stream, lambda: (image, "one"), events.append, lambda: None, frame_interval=0)
+        # A new picture each time: an unchanged one is not sent again.
+        rfb.serve(stream, lambda: (image.copy(), "one"), events.append, lambda: None, frame_interval=0)
     assert [(event["buttons"], event["x"], event["y"]) for event in events] == [(1, 319, 639), (0, 319, 3)]
     assert len(jpeg_sizes(bytes(stream.output))) == 2, "the stream went on after them"
     with pytest.raises(rfb.ProtocolError, match="buttons"):

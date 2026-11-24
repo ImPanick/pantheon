@@ -449,6 +449,38 @@ class AuthManager:
             self._save()
 
     @property
+    def load_error(self) -> Optional[str]:
+        """Why `auth.json` could not be read at startup, or None (`P3-16`)."""
+        return self._load_error
+
+    def retry_load(self) -> bool:
+        """Read an `auth.json` that could not be read at startup, once more.
+
+        `P3-16` keeps a process that failed to read the user database from ever
+        writing it, and until now from ever reading it again: the fix was a
+        restart, and until then every sign-in answered "Invalid credentials".
+        A read that now succeeds replaces the empty stand-in with the real
+        accounts and lifts the write guard, exactly as a restart would; one
+        that still fails changes nothing. True when the accounts are loaded.
+        """
+        with self._setup_lock:
+            if not self._load_error:
+                return True
+            previous = self._load_error
+            self._load_error = None
+            self._load()
+            if self._load_error:
+                return False
+            logger.warning("Auth config readable again (was: %s); accounts loaded", previous)
+            for step in (self._migrate_single_user, self._drop_reserved_loaded_users,
+                         self._migrate_legacy_admin_role):
+                try:
+                    step()
+                except Exception:
+                    logger.exception("Auth migration step %s failed after reload", step.__name__)
+            return True
+
+    @property
     def is_configured(self) -> bool:
         # `P3-16`. False is the permissive answer everywhere this is consumed —
         # it means "first run", which opens setup (`setup`), lets loopback

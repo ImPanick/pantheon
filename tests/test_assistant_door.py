@@ -51,7 +51,7 @@ def _code(path: Path) -> str:
 def test_the_rail_button_exists_in_the_markup():
     markup = INDEX.read_text(encoding="utf-8")
     assert 'id="rail-assistant"' in markup
-    assert 'title="Assistant"' in markup
+    assert 'title="Apollo"' in markup
 
 
 def test_the_rail_button_is_wired_to_the_chat_opener():
@@ -76,7 +76,7 @@ def test_the_rail_button_has_a_hover_label_like_every_other():
     """The rail labels every button. One without a label is visibly a bolt-on,
     and the point of this row is that the assistant is part of the product."""
     code = _code(APP_JS)
-    assert "'rail-assistant': 'Assistant'" in code
+    assert "'rail-assistant': 'Apollo'" in code
 
 
 def test_the_assistant_module_is_still_loaded_on_every_page():
