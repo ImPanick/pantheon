@@ -110,3 +110,46 @@ def test_the_tool_notes_an_open_loop_for_its_person(apollo_db, monkeypatch):
     assert out["exit_code"] == 0, out
     status = asyncio.run(tool.apollo("status", owner="bob"))
     assert "Owe Sam" not in status["output"]
+
+
+# ── Apollo's tools are in reach on every turn in its chat ───────────────────
+#
+# Owner's test, 2026-11-24: a goal in Apollo's chat "just proceeds like any
+# other ordinary chat" (no task, no lead, no delegation). The frame told Apollo
+# to turn real work into a task, but a turn's tools are picked from its words
+# and a goal names none of them. Measured on a local model's budget: the goal
+# below was offered 4 of 95 tools, and not `apollo`, `fleet` or `ui_control`.
+
+_GOAL = "Help me get the getpantheon.ai site live this week"
+
+
+def _plan(pins):
+    from src.agent_loop import plan_turn_tool_suite
+    return plan_turn_tool_suite(_GOAL, endpoint_url="http://localhost:1234/v1",
+                                model="qwen2.5-7b-instruct", pinned_tools=pins,
+                                get_setting_fn=lambda *a, **k: None)
+
+
+def test_a_goal_names_none_of_apollos_tools_so_the_words_alone_leave_them_out():
+    assert not (frame.TOOLS & set(_plan(()).offered))
+
+
+def test_pinned_apollos_tools_reach_a_goal_turn_on_a_local_model():
+    suite = _plan(frame.TOOLS)
+    assert frame.TOOLS <= set(suite.offered), suite.offered
+    assert frame.TOOLS == {"apollo", "fleet", "ui_control"}
+
+
+def test_the_chat_route_pins_them_in_an_apollo_chat_only():
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1] / "routes" / "chat_routes.py").read_text(encoding="utf-8")
+    assert "pinned_tools=(set(_apollo.TOOLS) if _apollo_frame and not _summoned else None)," in src
+
+
+def test_a_pin_survives_every_selection_path_and_is_capped_with_the_rest():
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1] / "src" / "agent_loop.py").read_text(encoding="utf-8")
+    union = src.index("_relevant_tools |= _turn_pinned_tools")
+    # After the vector retrieval and the keyword fallback, before the cap.
+    assert src.index("ToolIndex.select_without_embeddings(\n            _retrieval_query") < union
+    assert union < src.index("_capped_out = sorted(set(_relevant_tools) - disabled_tools.allowed_among(_relevant_tools))")

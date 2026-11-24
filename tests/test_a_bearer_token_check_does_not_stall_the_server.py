@@ -9,11 +9,22 @@ companion and any script holding a token froze the chat for everyone while it
 worked. The check now runs in a thread, and a token that already passed is
 recognised by its SHA-256 without bcrypt, for as long as its row is still an
 active candidate: a revoked token stops working on the next request.
+
+The stall is measured with the cyclic garbage collector held for the five
+requests. Late in a full run (~28,700 tests, the app imported fresh dozens of
+times) a full collection costs about 0.6 s and holds the GIL on whichever thread
+allocates: CI failed this test at 597, 610 and 650 ms on PRs that never touch
+the bearer path, and passed it on dev and other PRs, while a lone run measures
+6-10 ms. That pause is the collector's, not the token check's. Which thread
+bcrypt runs on is also asserted outright, so the property does not rest on a
+timing alone.
 """
 from __future__ import annotations
 
 import asyncio
+import gc
 import logging
+import threading
 import secrets
 import time
 
@@ -60,14 +71,21 @@ async def _max_loop_stall_during(client, n, raw):
             gaps.append(now - last)
             last = now
 
-    task = asyncio.create_task(ticker())
-    await asyncio.sleep(0.02)
-    codes = []
-    for _ in range(n):
-        r = await client.get("/api/health/detail", headers={"Authorization": "Bearer " + raw})
-        codes.append(r.status_code)
-    stop = True
-    await task
+    gc.collect()
+    was_enabled = gc.isenabled()
+    gc.disable()
+    try:
+        task = asyncio.create_task(ticker())
+        await asyncio.sleep(0.02)
+        codes = []
+        for _ in range(n):
+            r = await client.get("/api/health/detail", headers={"Authorization": "Bearer " + raw})
+            codes.append(r.status_code)
+        stop = True
+        await task
+    finally:
+        if was_enabled:
+            gc.enable()
     return max(gaps), codes
 
 
@@ -85,6 +103,32 @@ def test_a_bearer_request_does_not_block_the_event_loop(bearer_app):
     stall, codes = asyncio.run(run())
     assert 401 not in codes, codes  # every request authenticated
     assert stall < 0.1, f"event loop stalled {stall * 1000:.0f} ms during bearer auth"
+
+
+def test_bcrypt_runs_off_the_event_loop_and_once_per_token(bearer_app, monkeypatch):
+    A, raw = bearer_app
+    real = A._bcrypt.checkpw
+    calls = []
+
+    def spy(pw, hashed):
+        calls.append(threading.get_ident())
+        return real(pw, hashed)
+
+    monkeypatch.setattr(A._bcrypt, "checkpw", spy)
+
+    async def run():
+        loop_thread = threading.get_ident()
+        transport = httpx.ASGITransport(app=A.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://127.0.0.1") as c:
+            codes = [(await c.get("/api/health/detail",
+                                  headers={"Authorization": "Bearer " + raw})).status_code
+                     for _ in range(3)]
+        return loop_thread, codes
+
+    loop_thread, codes = asyncio.run(run())
+    assert 401 not in codes, codes
+    assert len(calls) == 1, f"bcrypt ran {len(calls)} times for one token over 3 requests"
+    assert calls[0] != loop_thread, "bcrypt ran on the event loop thread"
 
 
 def test_a_revoked_token_stops_matching_although_it_was_verified_before(bearer_app):

@@ -85,7 +85,7 @@ RESULT["ready_anonymous"] = {"status": r.status_code, "body": r.json()}
 r = admin.get("/api/ready")
 RESULT["ready_admin"] = {"status": r.status_code, "keys": sorted(r.json())}
 import src.readiness as readiness
-readiness.check_readiness = lambda: {
+readiness.check_readiness = lambda auth_manager=None: {
     "ready": False, "version": "x", "timestamp": "t",
     "checks": {"database": {"ok": False, "error": "could not connect to server at db.internal:5432"},
                "data_dir": {"ok": True, "path": "/srv/pantheon/data"}}}
