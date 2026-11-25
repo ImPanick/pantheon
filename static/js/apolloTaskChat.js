@@ -24,12 +24,14 @@
 // Either way Apollo's chat gets one line about it (`POST …/said`), never the
 // conversation. An approval the lead asks for shows here as buttons and in
 // the pane's Needs you; answering here resumes the turn, as the main chat's
-// card does. No server text is parsed as HTML.
+// card does. No server text is parsed as HTML: a lead's report is drawn by
+// `apolloText.js`, which builds elements and sets text.
 
 import * as Modals from './modalManager.js?v=20261009census';
 import { makeWindowDraggable } from './windowDrag.js';
 import uiModule from './ui.js';
 import * as M from './apolloPaneModel.js';
+import { renderText } from './apolloText.js';
 
 const POLL_MS = 8000;
 const FLOAT_PREFIX = 'apollo-chat-';
@@ -137,9 +139,15 @@ export function createTaskChat(taskId, { onTitle } = {}) {
     log.textContent = '';
     if (!entries.length) log.appendChild(_el('p', 'apo-empty', `Nothing here yet. Ask ${lead} anything about the task.`));
     for (const e of entries) {
+      if (e.role === 'apollo') {
+        // Apollo's handoff that started the lead's run: a line, not a bubble.
+        log.appendChild(_el('p', 'apo-msg-handoff', `Apollo handed this goal to ${lead}.`));
+        continue;
+      }
       const row = _el('div', `apo-msg apo-msg-${e.role === 'user' ? 'you' : 'lead'}`);
       row.appendChild(_el('span', 'apo-msg-who', e.role === 'user' ? 'You' : lead));
-      row.appendChild(_el('p', 'apo-msg-t', e.text));
+      if (e.role === 'user') row.appendChild(_el('p', 'apo-msg-t', e.text));
+      else row.appendChild(renderText(_el('div', 'apo-msg-t'), e.text));
       log.appendChild(row);
     }
     if (live) log.appendChild(live);
