@@ -15,6 +15,7 @@ from urllib.parse import urlparse, urlunparse
 
 from core.database import SessionLocal, ModelEndpoint
 from src.llm_core import _detect_provider, _host_match, _is_kimi_code_url, KIMI_CODE_USER_AGENT, _ollama_api_root
+from src.local_hosts import DOCKER_HOST_NAMES, LOCAL_ENDPOINT_NAMES, LOOPBACK_NAMES
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,7 @@ def endpoint_cost_tracked(url: str, endpoint_kind: Optional[str] = None) -> bool
         return False
     if kind in {"api", "proxy"}:
         return True
-    if host in {"localhost", "0.0.0.0", "host.docker.internal"} or host.endswith(".local"):
+    if host in LOCAL_ENDPOINT_NAMES or host.endswith(".local"):
         return False
     try:
         ip = ipaddress.ip_address(host)
@@ -466,7 +467,7 @@ def build_models_url(base: str) -> Optional[str]:
     base = frontier_api_base(base)
     parsed = urlparse(base)
     host = (parsed.hostname or "").lower()
-    is_local = host in {"localhost", "127.0.0.1", "::1", "host.docker.internal"}
+    is_local = host in LOOPBACK_NAMES | DOCKER_HOST_NAMES
     uses_v1_models_by_default = is_local or host in {"api.deepseek.com", "api.openai.com"}
     if not parsed.path and uses_v1_models_by_default:
         base = _append_endpoint_path(base, "/v1")

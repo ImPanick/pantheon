@@ -29,13 +29,12 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from core.database import SessionLocal
-from src.auth_helpers import get_current_user, request_is_a_person
+from src.auth_helpers import get_current_user, only_a_person_can, request_is_a_person
 
 logger = logging.getLogger(__name__)
 
 BODY_MAX_BYTES = 16 * 1024
-ONLY_A_PERSON = ("Only a person signed in to Pantheon can change their git identity or tokens — "
-                 "not an API token or the assistant.")
+ONLY_A_PERSON = only_a_person_can("change their git identity or tokens")  # `B2174`
 
 
 def _refused(sentence: str, status: int = 400) -> JSONResponse:

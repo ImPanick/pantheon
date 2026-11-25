@@ -386,6 +386,9 @@ Re-measured 2026-11-07, after the eightieth wave, the audit of what Odysseus fix
 Re-measured 2026-11-24, after the dependency-update wave: **140 filed, 239 closed**, open **313 → 214**, falling. The window now starts at the wave before 2026-11-11, when 177 rows were closed on CI evidence, so that closure sits inside it.
 
 **Direction as of 2026-11-24, after the dependency-update wave: the open count is falling.**
+Re-measured 2026-11-24, after the four waves of the owner's ruling that day (`D-2026-11-24-01` to `-04`): **81 filed, 246 closed**, open **380 → 215**, falling. The window now starts at the wave before 2026-11-11, when 177 rows were closed on CI evidence, so that closure sits inside it; the four waves themselves filed 41 rows and closed 37. The ship-line composition is 0 of the last 40 `B` rows (`B2151`–`B2220`).
+
+**Direction as of 2026-11-24, after the four cleanup waves: the open count is falling.**
 
 ### A second number, which is the one that moves
 
@@ -925,6 +928,7 @@ weakest one in this document: it means nobody adjudicated them individually.
 | `B2098` | tracked | decision | ruled 2026-11-11 (`D-2026-11-11-01` §2): a learned skill publishes itself only at 0.85 or more, an imported one publishes, a written one waits for a person, and the agent cannot publish its own; `B2112` is the agent naming a teacher's origin |
 | `B2102` | tracked | second-line | fixed 2026-11-11 (`D-2026-11-11-01` §6): every mail socket opens through `src/mail_reach.py` — one lookup, connect to the checked address, link-local and metadata refused to all, loopback, this host, private ranges and non-mail ports only with `can_reach_private_mail`, one sentence for every refusal |
 | `B1756` | tracked | security | in the native-host verification a guest reached an unauthenticated host ADB server through `10.0.2.2` and ran a marker command on that same test guest, and Netsim's cell-list RPC answered without auth: isolation between guests on a shared host, which matters once one host serves more than one person. The worker runs one VM by default, starts no shared ADB server (`-no-direct-adb`, `no_adb.py` as the SDK's adb) and keeps Netsim in its private radio container; tracked by the owner's call (2026-11-11) until multi-user hosting |
+| `B2172` | tracked | security | the rule read *privileges* in "different privileges": a list of same-bodied functions this pass left unfolded. Nothing is opened or closed; the one pair that reads a privilege (`may_use`) stays two functions because each reads its own (`can_use_browser`, `can_use_workstation`) |
 
 ---
 

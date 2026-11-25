@@ -54,7 +54,7 @@ from routes.cookbook_helpers import (
     _ps_squote, _bash_squote, _validate_serve_cmd, _parse_serve_phase, OLLAMA_MISSING_HINT,
     _safe_env_prefix, _local_windows_bash_env_prefix, _local_tooling_path_export, _append_serve_preflight_exit_lines,
     _append_serve_exit_code_lines, _append_llama_cpp_linux_accel_build_lines, _cached_model_scan_script,
-    load_stored_hf_token,
+    load_stored_hf_token, set_argv_flag,
     _append_vllm_linux_preflight_lines, _ollama_bind_from_cmd, _pip_install_fallback_chain,
     _pip_install_no_cache, _user_shell_path_bootstrap, _venv_safe_local_pip_install_cmd,
     _diagnose_serve_output, run_ssh_command_async,
@@ -541,17 +541,7 @@ def setup_cookbook_routes() -> APIRouter:
             return None
 
         def set_flag(flag: str, value: str) -> None:
-            for i, part in enumerate(body):
-                if part == flag:
-                    if i + 1 < len(body):
-                        body[i + 1] = value
-                    else:
-                        body.append(value)
-                    return
-                if part.startswith(flag + "="):
-                    body[i] = f"{flag}={value}"
-                    return
-            body.extend([flag, value])
+            set_argv_flag(body, flag, value)
 
         def remove_flag(flag: str) -> None:
             i = 0

@@ -8,15 +8,14 @@ import ipaddress
 import json
 import logging
 import re
-import ssl
-from datetime import datetime, timezone
 from typing import Optional
 from urllib.parse import urlparse
 
-import httpcore
 import httpx
 
 from src.database import SessionLocal, Webhook
+from src.utc_clock import utcnow_naive  # `B2173`: the one clock
+from src.local_hosts import NEVER_FETCHED_NAMES
 
 logger = logging.getLogger(__name__)
 
@@ -41,11 +40,6 @@ _PRIVATE_NETWORKS = [
     ipaddress.ip_network("fc00::/7"),
     ipaddress.ip_network("fe80::/10"),
 ]
-
-
-def _utcnow() -> datetime:
-    """Return naive UTC for existing DB columns while avoiding datetime.utcnow()."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def _ip_is_private(addr: ipaddress._BaseAddress) -> bool:
@@ -77,7 +71,7 @@ _LAN_NETWORKS = (
     ipaddress.ip_network("100.64.0.0/10"),
     ipaddress.ip_network("fc00::/7"),
 )
-_NEVER_NAMES = ("localhost", "0.0.0.0", "metadata.google.internal", "metadata")
+_NEVER_NAMES = NEVER_FETCHED_NAMES | {"0.0.0.0"}
 
 
 def _ip_refused(addr: ipaddress._BaseAddress, *, allow_lan: bool) -> bool:
@@ -217,97 +211,10 @@ def _validated_public_ips(url: str, *, allow_lan: bool = False) -> list:
     return addrs
 
 
-# httpcore raises its own exception hierarchy; map the ones a simple POST can
-# surface back to their httpx equivalents so callers' `except httpx.*` blocks
-# (and sanitize_error) behave exactly as they did with the default transport.
-_HTTPCORE_TO_HTTPX_EXC = {
-    httpcore.ConnectError: httpx.ConnectError,
-    httpcore.ConnectTimeout: httpx.ConnectTimeout,
-    httpcore.NetworkError: httpx.NetworkError,
-    httpcore.PoolTimeout: httpx.PoolTimeout,
-    httpcore.ProtocolError: httpx.ProtocolError,
-    httpcore.ReadError: httpx.ReadError,
-    httpcore.ReadTimeout: httpx.ReadTimeout,
-    httpcore.RemoteProtocolError: httpx.RemoteProtocolError,
-    httpcore.TimeoutException: httpx.TimeoutException,
-    httpcore.WriteError: httpx.WriteError,
-    httpcore.WriteTimeout: httpx.WriteTimeout,
-}
-
-
-class _PinnedAsyncBackend(httpcore.AsyncNetworkBackend):
-    """Async network backend that routes every TCP connect to a fixed IP.
-
-    httpcore derives TLS SNI and the ``Host`` header from the request URL, not
-    from the connect host, so pinning only the socket destination keeps
-    certificate validation and vhost routing pointed at the original hostname.
-    """
-
-    def __init__(self, ip: ipaddress._BaseAddress):
-        self._ip = str(ip)
-        self._real = httpcore.AnyIOBackend()
-
-    async def connect_tcp(self, host, port, timeout=None, local_address=None,
-                          socket_options=None):
-        return await self._real.connect_tcp(
-            self._ip, port, timeout, local_address, socket_options
-        )
-
-    async def connect_unix_socket(self, path, timeout=None, socket_options=None):
-        return await self._real.connect_unix_socket(path, timeout, socket_options)
-
-    async def sleep(self, seconds: float) -> None:
-        return await self._real.sleep(seconds)
-
-
-class _PinnedAsyncTransport(httpx.AsyncBaseTransport):
-    """httpx transport that pins the TCP connect to a pre-resolved public IP.
-
-    Uses only public ``httpcore`` / ``httpx`` APIs. The request URL is passed
-    through unchanged (Host + SNI stay the original hostname); only the socket
-    destination is pinned, closing the DNS-rebinding TOCTOU between the SSRF
-    check and the connect. HTTP/1.1 only — webhook deliveries are small POSTs.
-    """
-
-    def __init__(self, ip: ipaddress._BaseAddress):
-        self._pool = httpcore.AsyncConnectionPool(
-            ssl_context=ssl.create_default_context(),
-            http1=True,
-            http2=False,
-            network_backend=_PinnedAsyncBackend(ip),
-        )
-
-    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-        core_req = httpcore.Request(
-            method=request.method,
-            url=httpcore.URL(
-                scheme=request.url.raw_scheme,
-                host=request.url.raw_host,
-                port=request.url.port,
-                target=request.url.raw_path,
-            ),
-            headers=request.headers.raw,
-            content=request.stream,
-            extensions=request.extensions,
-        )
-        try:
-            core_resp = await self._pool.handle_async_request(core_req)
-            content = b"".join([chunk async for chunk in core_resp.aiter_stream()])
-            await core_resp.aclose()
-        except Exception as exc:
-            mapped = _HTTPCORE_TO_HTTPX_EXC.get(type(exc))
-            if mapped is not None:
-                raise mapped(str(exc)) from exc
-            raise
-        return httpx.Response(
-            status_code=core_resp.status,
-            headers=core_resp.headers,
-            content=content,
-            extensions=core_resp.extensions,
-        )
-
-    async def aclose(self) -> None:
-        await self._pool.aclose()
+# `B2170`. The DNS-pinned transport is `src/pinned_transport.py`'s: one copy for
+# web fetch, an integration's `api_call`, the skill importer and this, and one
+# trust store (certifi plus `SSL_CERT_FILE`), where this copy used the system's.
+from src.pinned_transport import PinnedAsyncTransport as _PinnedAsyncTransport  # noqa: E402
 
 
 def validate_events(events_str: str) -> str:
@@ -479,7 +386,7 @@ class WebhookManager:
             logger.warning(f"Webhook {webhook_id} has invalid URL, skipping: {e}")
             return
 
-        body = json.dumps({"event": event, "timestamp": _utcnow().isoformat(), "data": payload})
+        body = json.dumps({"event": event, "timestamp": utcnow_naive().isoformat(), "data": payload})
         headers = {
             "Content-Type": "application/json",
             "X-Pantheon-Event": event,
@@ -513,7 +420,7 @@ class WebhookManager:
             # webhook is the one outbound call the operator does not watch.
             outbound.observe(host, resp.status_code, dict(getattr(resp, "headers", {}) or {}))
             db.query(Webhook).filter(Webhook.id == webhook_id).update({
-                "last_triggered_at": _utcnow(),
+                "last_triggered_at": utcnow_naive(),
                 "last_status_code": resp.status_code,
                 "last_error": None,
             })
@@ -523,7 +430,7 @@ class WebhookManager:
             outbound.note_failure(host)
             try:
                 db.query(Webhook).filter(Webhook.id == webhook_id).update({
-                    "last_triggered_at": _utcnow(),
+                    "last_triggered_at": utcnow_naive(),
                     "last_status_code": None,
                     "last_error": sanitize_error(str(e)),
                 })

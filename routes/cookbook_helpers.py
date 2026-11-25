@@ -770,6 +770,24 @@ def _newest_local_snapshot(repo_id: str, hf_cache: str | os.PathLike | None = No
     return path if _SAFE_SNAPSHOT_PATH_RE.fullmatch(path) else None
 
 
+def set_argv_flag(argv: list, flag: str, value: str) -> None:
+    """Give `flag` the value `value` in a command's argv, in place: the word
+    after a bare `flag`, or `flag=value` where it is written joined, or both
+    appended when it is absent. `B2175`: the one copy of what two serve-command
+    normalisers each wrote inline."""
+    for i, part in enumerate(argv):
+        if part == flag:
+            if i + 1 < len(argv):
+                argv[i + 1] = value
+            else:
+                argv.append(value)
+            return
+        if part.startswith(flag + "="):
+            argv[i] = f"{flag}={value}"
+            return
+    argv.extend([flag, value])
+
+
 def _normalize_minimax_m3_vllm_cmd(cmd: str, *, local: bool,
                                    hf_cache: str | os.PathLike | None = None) -> str:
     """Patch MiniMax M3 vLLM launches into the known-good form.
@@ -818,17 +836,7 @@ def _normalize_minimax_m3_vllm_cmd(cmd: str, *, local: bool,
         return any(p == flag or p.startswith(flag + "=") for p in body)
 
     def set_flag(flag: str, value: str) -> None:
-        for i, part in enumerate(body):
-            if part == flag:
-                if i + 1 < len(body):
-                    body[i + 1] = value
-                else:
-                    body.append(value)
-                return
-            if part.startswith(flag + "="):
-                body[i] = f"{flag}={value}"
-                return
-        body.extend([flag, value])
+        set_argv_flag(body, flag, value)
 
     def add_bool(flag: str) -> None:
         if not has_flag(flag):

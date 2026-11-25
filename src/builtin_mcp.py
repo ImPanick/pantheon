@@ -128,19 +128,10 @@ MCP_DISABLED = env_flag("PANTHEON_DISABLE_MCP", False)
 BROWSER_MCP_REQUIRE_CACHE = env_flag("PANTHEON_BROWSER_MCP_REQUIRE_CACHE", True)
 
 
-# Strong references to the fire-and-forget startup tasks scheduled below.
-# asyncio only keeps weak references to tasks created via create_task, so
-# without this the GC can collect a task mid-execution and the server
-# registration silently never runs. Mirrors _spawn_bg in routes/chat_helpers.py.
-_BG_TASKS: set[asyncio.Task] = set()
-
-
-def _spawn_bg(coro) -> asyncio.Task:
-    """Schedule a background task and hold a strong reference until it finishes."""
-    task = asyncio.create_task(coro)
-    _BG_TASKS.add(task)
-    task.add_done_callback(_BG_TASKS.discard)
-    return task
+# Strong references to the fire-and-forget startup tasks scheduled below, so
+# the server registration is not collected mid-run (`src/background_tasks.py`).
+from src.background_tasks import BACKGROUND_TASKS as _BG_TASKS  # noqa: E402,F401 — tests read it
+from src.background_tasks import spawn_tracked as _spawn_bg  # noqa: E402
 
 def _find_browser_executable() -> str:
     """Find a browser binary for the built-in Playwright MCP server.

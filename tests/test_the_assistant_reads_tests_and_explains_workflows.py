@@ -337,8 +337,8 @@ async def test_export_is_the_workbench_file_without_the_key_or_the_address(world
     ("check", store.ONLY_A_PERSON_CHECKS),
     ("fix", store.ONLY_A_PERSON_FIXES),
     ("apply_fix", store.ONLY_A_PERSON_FIXES),
-    ("answer", store.ONLY_A_PERSON_ANSWERS),
-    ("approve", store.ONLY_A_PERSON_ANSWERS),
+    ("answer", store.ONLY_A_PERSON_ANSWERS_A_STEP),
+    ("approve", store.ONLY_A_PERSON_ANSWERS_A_STEP),
 ])
 async def test_what_is_the_persons_alone_is_refused_in_its_own_words(world, action, sentence):
     w = world

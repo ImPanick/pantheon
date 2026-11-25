@@ -25,9 +25,10 @@ logger = logging.getLogger(__name__)
 Base = declarative_base()
 
 
-def utcnow_naive() -> datetime:
-    """Return naive UTC for existing DateTime columns."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+# `B2173`. The one definition is `src/utc_clock.py`, so a module that must not
+# import this one (SQLAlchemy and the engine) has the same clock; re-exported
+# here for its many importers.
+from src.utc_clock import utcnow_naive  # noqa: E402,F401
 
 
 class TimestampMixin:

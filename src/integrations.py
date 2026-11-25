@@ -3,14 +3,12 @@ import asyncio
 import ipaddress
 import json
 import os
-import time
 import uuid
 import logging
 import re
 from typing import Dict, List, Optional, Any, Tuple
 from urllib.parse import urlencode, urljoin, urlparse, urlunparse
 
-import httpcore
 import httpx
 from fastapi import HTTPException
 
@@ -623,119 +621,12 @@ def _find_integration(identifier: str, owner: Optional[str]) -> Optional[Dict[st
     return None
 
 
-# httpcore raises its own exception hierarchy; map the ones a simple request can
-# surface back to their httpx equivalents so the caller's `except httpx.*` blocks
-# below behave exactly as they did with the default transport.
-_HTTPCORE_TO_HTTPX_EXC = {
-    httpcore.ConnectError: httpx.ConnectError,
-    httpcore.ConnectTimeout: httpx.ConnectTimeout,
-    httpcore.NetworkError: httpx.NetworkError,
-    httpcore.PoolTimeout: httpx.PoolTimeout,
-    httpcore.ProtocolError: httpx.ProtocolError,
-    httpcore.ReadError: httpx.ReadError,
-    httpcore.ReadTimeout: httpx.ReadTimeout,
-    httpcore.RemoteProtocolError: httpx.RemoteProtocolError,
-    httpcore.TimeoutException: httpx.TimeoutException,
-    httpcore.WriteError: httpx.WriteError,
-    httpcore.WriteTimeout: httpx.WriteTimeout,
-}
-
-
-class _PinnedAsyncBackend(httpcore.AsyncNetworkBackend):
-    """Network backend that connects only to the pre-validated IPs, in order.
-
-    Every address here came out of the single SSRF resolution, so moving to the
-    next one after a connect failure is not re-resolution — it's ordinary
-    multi-address fallback restricted to the set the guard already approved.
-    httpcore takes TLS SNI and the ``Host`` header from the request URL rather
-    than the connect host, so pinning the socket destination leaves certificate
-    validation and vhost routing pointed at the original hostname.
-    """
-
-    def __init__(self, ips: List[ipaddress._BaseAddress]):
-        self._ips = [str(ip) for ip in ips]
-        self._real = httpcore.AnyIOBackend()
-
-    async def connect_tcp(self, host, port, timeout=None, local_address=None,
-                          socket_options=None):
-        # One shared connect budget: each attempt gets the time left until the
-        # original deadline, so N dead addresses can't stretch the connect
-        # phase to N * timeout.
-        deadline = None if timeout is None else time.monotonic() + timeout
-        last_exc: Optional[Exception] = None
-        for ip in self._ips:
-            remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
-            try:
-                return await self._real.connect_tcp(
-                    ip, port, remaining, local_address, socket_options
-                )
-            except (httpcore.ConnectError, httpcore.ConnectTimeout) as exc:
-                last_exc = exc
-                if deadline is not None and time.monotonic() >= deadline:
-                    break
-        raise last_exc
-
-    async def connect_unix_socket(self, path, timeout=None, socket_options=None):
-        return await self._real.connect_unix_socket(path, timeout, socket_options)
-
-    async def sleep(self, seconds: float) -> None:
-        return await self._real.sleep(seconds)
-
-
-class _PinnedAsyncTransport(httpx.AsyncBaseTransport):
-    """httpx transport that pins the TCP connect to the pre-resolved IP(s).
-
-    Kept local, mirroring the per-module pinned transports web fetch and
-    webhook delivery already carry, rather than coupling api_call to the
-    webhook subsystem. The request URL passes through unchanged, so SNI and the
-    ``Host`` header stay the original hostname; only the socket destination is
-    pinned, which is what closes the rebinding window.
-    """
-
-    def __init__(self, ips: List[ipaddress._BaseAddress]):
-        self._pinned_ips = list(ips)
-        self._pool = httpcore.AsyncConnectionPool(
-            # Reuse the CA trust the default httpx client would build (certifi
-            # plus SSL_CERT_FILE / SSL_CERT_DIR when trust_env is set) so
-            # swapping in this transport doesn't quietly change which chains
-            # verify. ssl.create_default_context() would use system roots.
-            ssl_context=httpx.create_ssl_context(),
-            http1=True,
-            http2=False,
-            network_backend=_PinnedAsyncBackend(ips),
-        )
-
-    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-        core_req = httpcore.Request(
-            method=request.method,
-            url=httpcore.URL(
-                scheme=request.url.raw_scheme,
-                host=request.url.raw_host,
-                port=request.url.port,
-                target=request.url.raw_path,
-            ),
-            headers=request.headers.raw,
-            content=request.stream,
-            extensions=request.extensions,
-        )
-        try:
-            core_resp = await self._pool.handle_async_request(core_req)
-            content = b"".join([chunk async for chunk in core_resp.aiter_stream()])
-            await core_resp.aclose()
-        except Exception as exc:
-            mapped = _HTTPCORE_TO_HTTPX_EXC.get(type(exc))
-            if mapped is not None:
-                raise mapped(str(exc)) from exc
-            raise
-        return httpx.Response(
-            status_code=core_resp.status,
-            headers=core_resp.headers,
-            content=content,
-            extensions=core_resp.extensions,
-        )
-
-    async def aclose(self) -> None:
-        await self._pool.aclose()
+# `B2170`. The DNS-pinned transport is `src/pinned_transport.py`'s, the one web
+# fetch, webhook delivery and the skill importer send through too.
+from src.pinned_transport import (  # noqa: E402
+    PinnedAsyncBackend as _PinnedAsyncBackend,  # noqa: F401 — the name tests drive
+    PinnedAsyncTransport as _PinnedAsyncTransport,
+)
 
 
 def _validated_ips(raw_ips: List[str]) -> List[ipaddress._BaseAddress]:

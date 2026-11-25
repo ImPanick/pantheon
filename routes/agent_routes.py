@@ -55,7 +55,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from core.database import SessionLocal
-from src.auth_helpers import get_current_user, request_is_a_person
+from src.auth_helpers import get_current_user, only_a_person_can, request_is_a_person
 from src.agents import hires as H
 from src.agents.catalogue import catalogue, get_agent
 from src.agents.manifest import FAMILIES, SECTIONS
@@ -63,8 +63,7 @@ from src.agents.manifest import FAMILIES, SECTIONS
 logger = logging.getLogger(__name__)
 
 BODY_MAX_BYTES = 64 * 1024
-ONLY_A_PERSON = ("Only a person signed in to Pantheon can summon, change or dismiss an agent — "
-                 "not an API token or the assistant.")
+ONLY_A_PERSON = only_a_person_can("summon, change or dismiss an agent")  # `B2174`
 NO_SUCH_AGENT = "There is no agent called that in the hall."
 NO_SUCH_HIRE = "There is no such hire."
 RUNS_SHOWN = 30

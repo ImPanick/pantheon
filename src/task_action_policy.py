@@ -4,12 +4,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
-
-
-def _utcnow() -> datetime:
-    """Naive UTC, matching what every other task DB field stores."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+from src.utc_clock import utcnow_naive  # `B2173`: the one clock
 
 
 ADMIN_ONLY_TASK_ACTIONS = frozenset({
@@ -193,7 +188,7 @@ def record_admin_refusal(db, task, *, run_id: str | None = None,
     from core.database import TaskRun
 
     msg = admin_refusal_message(action or getattr(task, "action", None))
-    now = _utcnow()
+    now = utcnow_naive()
 
     run = None
     if run_id:

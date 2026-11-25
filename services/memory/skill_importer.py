@@ -7,12 +7,10 @@ import json
 import logging
 import os
 import re
-import time
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, List, Optional, Tuple, cast
+from typing import Dict, Iterable, List, Optional, Tuple
 from urllib.parse import quote, urljoin, urlparse
 
-import httpcore
 import contextvars
 import os
 
@@ -241,127 +239,22 @@ def _resolve_and_check_url(url: str) -> List[ipaddress._BaseAddress]:
 _check_fetch_url = _resolve_and_check_url
 
 
-class _PinnedBackend(httpcore.NetworkBackend):
-    """Connect only to addresses from one validated DNS snapshot."""
-
-    def __init__(self, ips: List[ipaddress._BaseAddress]):
-        self._ips = [str(ip) for ip in ips]
-        self._real = httpcore.SyncBackend()
-
-    def connect_tcp(
-        self,
-        host: str,
-        port: int,
-        timeout: float | None = None,
-        local_address: str | None = None,
-        socket_options=None,
-    ):
-        deadline = None if timeout is None else time.monotonic() + timeout
-        last_exc: Optional[Exception] = None
-        for ip in self._ips:
-            remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
-            try:
-                return self._real.connect_tcp(
-                    ip,
-                    port,
-                    remaining,
-                    local_address,
-                    socket_options,
-                )
-            except (httpcore.ConnectError, httpcore.ConnectTimeout) as exc:
-                last_exc = exc
-                if deadline is not None and time.monotonic() >= deadline:
-                    break
-        if last_exc is not None:
-            raise last_exc
-        raise httpcore.ConnectError("no validated address available")
-
-    def connect_unix_socket(self, path, timeout=None, socket_options=None):
-        return self._real.connect_unix_socket(path, timeout, socket_options)
-
-    def sleep(self, seconds: float) -> None:
-        return self._real.sleep(seconds)
+# `B2170`. The DNS-pinned transport is `src/pinned_transport.py`'s, one copy for
+# web fetch, webhook delivery, an integration's `api_call` and this, with one
+# trust store (certifi plus `SSL_CERT_FILE`).
+from src.pinned_transport import PinnedBackend as _PinnedBackend, PinnedTransport  # noqa: E402,F401 — `_PinnedBackend`: the name tests drive
 
 
-_HTTPCORE_TO_HTTPX_EXC = {
-    httpcore.ConnectError: httpx.ConnectError,
-    httpcore.ConnectTimeout: httpx.ConnectTimeout,
-    httpcore.LocalProtocolError: httpx.LocalProtocolError,
-    httpcore.NetworkError: httpx.NetworkError,
-    httpcore.PoolTimeout: httpx.PoolTimeout,
-    httpcore.ProtocolError: httpx.ProtocolError,
-    httpcore.ProxyError: httpx.ProxyError,
-    httpcore.ReadError: httpx.ReadError,
-    httpcore.ReadTimeout: httpx.ReadTimeout,
-    httpcore.RemoteProtocolError: httpx.RemoteProtocolError,
-    httpcore.TimeoutException: httpx.TimeoutException,
-    httpcore.UnsupportedProtocol: httpx.UnsupportedProtocol,
-    httpcore.WriteError: httpx.WriteError,
-    httpcore.WriteTimeout: httpx.WriteTimeout,
-}
-
-
-class _PinnedTransport(httpx.BaseTransport):
-    """Pin socket connects while preserving URL authority, Host, and TLS SNI."""
+class _PinnedTransport(PinnedTransport):
+    """The shared pinned transport, with `P8-49`'s ceiling on the body said as
+    an import refusal: a repository archive is the one response here whose size
+    is not bounded by what GitHub serves for a single file."""
 
     def __init__(self, ips: List[ipaddress._BaseAddress], max_bytes: Optional[int] = None):
-        self._pinned_ips = list(ips)
-        # `P8-49`. A ceiling on the body, enforced while it streams: a
-        # repository archive is the one response here whose size is not
-        # bounded by what GitHub serves for a single file.
-        self._max_bytes = max_bytes
-        self._pool = httpcore.ConnectionPool(
-            ssl_context=httpx.create_ssl_context(),
-            http1=True,
-            http2=False,
-            network_backend=_PinnedBackend(ips),
-        )
+        super().__init__(ips, max_bytes=max_bytes)
 
-    def handle_request(self, request: httpx.Request) -> httpx.Response:
-        core_request = httpcore.Request(
-            method=request.method,
-            url=httpcore.URL(
-                scheme=request.url.raw_scheme,
-                host=request.url.raw_host,
-                port=request.url.port,
-                target=request.url.raw_path,
-            ),
-            headers=request.headers.raw,
-            content=request.stream,
-            extensions=request.extensions,
-        )
-        core_response = None
-        try:
-            core_response = self._pool.handle_request(core_request)
-            if self._max_bytes is None:
-                content = b"".join(cast(Iterable[bytes], core_response.stream))
-            else:
-                chunks, got = [], 0
-                for chunk in cast(Iterable[bytes], core_response.stream):
-                    got += len(chunk)
-                    if got > self._max_bytes:
-                        raise SkillImportError(
-                            f"download larger than {self._max_bytes:,} bytes")
-                    chunks.append(chunk)
-                content = b"".join(chunks)
-        except Exception as exc:
-            mapped = _HTTPCORE_TO_HTTPX_EXC.get(type(exc))
-            if mapped is not None:
-                raise mapped(str(exc)) from exc
-            raise
-        finally:
-            if core_response is not None:
-                core_response.close()
-
-        return httpx.Response(
-            status_code=core_response.status,
-            headers=core_response.headers,
-            content=content,
-            extensions=core_response.extensions,
-        )
-
-    def close(self) -> None:
-        self._pool.close()
+    def too_large(self, limit: int) -> Exception:
+        return SkillImportError(f"download larger than {limit:,} bytes")
 
 
 def _response_headers(response) -> dict:

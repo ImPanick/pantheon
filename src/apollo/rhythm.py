@@ -33,6 +33,7 @@ from datetime import datetime, time as dtime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.apollo.errors import ApolloRefused
+from src.utc_clock import utcnow_naive  # `B2173`: the one clock
 
 FIRST_LIGHT = "First light"
 BRIEFING = "Briefing"
@@ -47,10 +48,6 @@ BRIEFING_PROMPT = (
     "them today, then what changed since you last spoke, then what's coming. "
     "Short paragraphs, no filler, nothing they've already settled. If nothing "
     "needs them, say so first.")
-
-
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def valid_time(value: Any) -> str:
@@ -222,7 +219,7 @@ def checkin_words(news: List[str]) -> str:
 def remember_spoke(db, owner: str, reported: Dict[str, str], *, now: Optional[datetime] = None) -> None:
     r = row(db, owner)
     r.reported = json.dumps(reported, sort_keys=True)
-    r.last_spoke_at = now or _utcnow()
+    r.last_spoke_at = now or utcnow_naive()
     db.flush()
 
 
@@ -236,7 +233,7 @@ def reported_of(r) -> Dict[str, str]:
 
 def checkin(db, owner: str, tz_name: Optional[str], *, now: Optional[datetime] = None) -> Tuple[Optional[str], str]:
     """(message or None, what the run says). None means Apollo stays quiet."""
-    now = now or _utcnow()
+    now = now or utcnow_naive()
     r = row(db, owner)
     if in_quiet(r, now, tz_name):
         return None, "Quiet hours: Apollo stayed quiet."

@@ -143,7 +143,7 @@ def _person_only(action: str) -> Optional[str]:
     if action in ("fix", "apply_fix", "apply"):
         return store.ONLY_A_PERSON_FIXES
     if action in ("answer", "approve", "deny"):
-        return store.ONLY_A_PERSON_ANSWERS
+        return store.ONLY_A_PERSON_ANSWERS_A_STEP
     if action in ("edit", "save", "update", "create", "new", "delete", "rename", "import",
                   "restore", "duplicate"):
         return EDITS_ARE_THE_PERSONS

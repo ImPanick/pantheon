@@ -1176,7 +1176,8 @@ def _is_loopback(url, base) -> bool:
         u, b = httpx.URL(str(url)), httpx.URL(base)
     except Exception:
         return False
-    local = {"127.0.0.1", "localhost", "::1", "0.0.0.0", b.host}
+    from src.local_hosts import THIS_MACHINE_NAMES
+    local = THIS_MACHINE_NAMES | {b.host}
     return u.host in local and (u.port or 80) == (b.port or 80)
 
 

@@ -38,22 +38,12 @@ from src.casual_signal import (  # noqa: E402
 
 
 # Strong references to in-flight fire-and-forget tasks scheduled from this
-# module. asyncio only keeps weak references to tasks created via
-# create_task, so without this the GC can collect a task mid-execution and
-# the background work (extraction, auto-naming) silently never runs.
-# Mirrors WebhookManager._spawn_tracked from src/webhook_manager.py.
-_BG_TASKS: set[asyncio.Task] = set()
+# module (extraction, auto-naming), so none is collected mid-run: the one
+# helper in `src/background_tasks.py` (`B2175`).
+from src.background_tasks import spawn_tracked as _spawn_bg  # noqa: E402
 _INCOGNITO_CONTEXTS: dict[str, dict[str, Any]] = {}
 _INCOGNITO_CONTEXT_TTL_SECONDS = 6 * 60 * 60
 _INCOGNITO_CONTEXT_MAX_MESSAGES = 80
-
-
-def _spawn_bg(coro) -> asyncio.Task:
-    """Schedule a background task and hold a strong reference until it finishes."""
-    task = asyncio.create_task(coro)
-    _BG_TASKS.add(task)
-    task.add_done_callback(_BG_TASKS.discard)
-    return task
 
 
 def _prune_incognito_contexts(now: float | None = None):

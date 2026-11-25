@@ -38,13 +38,9 @@ from src.task_action_policy import (
     owner_has_admin_task_privileges,
     record_admin_refusal,
 )
+from src.utc_clock import utcnow_naive as _utcnow  # `B2173`: the one clock; the name is a seam tests freeze
 
 logger = logging.getLogger(__name__)
-
-
-def _utcnow() -> datetime:
-    """Return naive UTC for task DB fields without using deprecated APIs."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 # ── Run-slot concurrency (P6-08) ────────────────────────────────────────────

@@ -89,10 +89,19 @@ def request_is_a_person(request: Request) -> bool:
         return False
 
 
-# `B1926`. Said by every door where only a person answers an approval card (a
-# chat's, a skill test's, a task run's, a workflow step's), in `B1006`'s words.
+# `B1926`. Said by the doors where only a person answers an approval card in a
+# chat (a chat's Allow or Deny, a skill test's), in `B1006`'s words. A task
+# run's question and a workflow step's say `workflow_store.ONLY_A_PERSON_ANSWERS_A_STEP`
+# instead, which says where the person answers (`B1870`, kept at the merge).
 ONLY_A_PERSON_ANSWERS = ("Only you can answer this, from Pantheon itself — "
                          "not an API token and not your assistant.")
+
+
+def only_a_person_can(what: str) -> str:
+    """`B2174`. The refusal a route says to an API token or the assistant's
+    loopback when only a signed-in person may `what` — one sentence, so the five
+    routes that each wrote their own stop drifting apart."""
+    return f"Only a person signed in to Pantheon can {what} — not an API token or the assistant."
 
 
 def require_api_token_scope(request: Request, scope: str) -> Optional[str]:

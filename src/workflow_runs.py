@@ -29,6 +29,7 @@ import threading
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
+from src.utc_clock import utcnow_naive  # `B2173`: the one clock
 
 logger = logging.getLogger(__name__)
 
@@ -128,10 +129,6 @@ _PRUNE_INTERVAL_SECONDS = 60 * 60
 # reason is at `src/events.py`'s `_last_prune` (monotonic time counts from boot).
 _last_prune: float | None = None
 _prune_lock = threading.Lock()
-
-
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def _iso(value) -> str | None:
@@ -413,7 +410,7 @@ def record_node_start(db, *, run_id: str, node: dict, seq: int,
         attempt=1,
         dry=bool(dry),
         workflow_version=workflow_version,
-        started_at=_utcnow(),
+        started_at=utcnow_naive(),
         input=cap_json(input_envelope, limit=node_record_max_chars(owner),
                        summary=trigger_summary(input_envelope) or None),
         reached_by=reached_by,
@@ -435,7 +432,7 @@ def record_node_end(db, rec, *, status: str, text: str | None = None,
     `port` is the outcome edge it left by, or `None` where its branch ended.
     """
     rec.status = status
-    rec.finished_at = _utcnow()
+    rec.finished_at = utcnow_naive()
     rec.port = port
     rec.model = model
     # `P22-11`. A record that waited and is now over waits for nothing.
@@ -449,7 +446,7 @@ def record_node_end(db, rec, *, status: str, text: str | None = None,
         if cut:
             kept = _loads(rec.steps)
             base = list(steps) if steps else (kept if isinstance(kept, list) else [])
-            steps = [*base, {"kind": "progress", "detail": cut, "at": _iso(_utcnow())}]
+            steps = [*base, {"kind": "progress", "detail": cut, "at": _iso(utcnow_naive())}]
     if error:
         rec.error = str(error)[:NODE_ERROR_MAX_CHARS]
     if steps:
@@ -468,7 +465,7 @@ def record_dry_node(db, *, run_id: str, node: dict, seq: int, steps: list,
     Not committed here: the dry run commits its records with its run row."""
     from core.database import TaskRunNode
 
-    now = _utcnow()
+    now = utcnow_naive()
     rec = TaskRunNode(
         id=str(uuid.uuid4()),
         run_id=run_id,
@@ -625,7 +622,7 @@ def prune_node_records(db, *, days: int | None = None, now: datetime | None = No
     from core.database import TaskRun, TaskRunNode, TASK_RUN_IN_FLIGHT_STATUSES
 
     days = node_records_days() if days is None else days
-    cutoff = (now or _utcnow()) - timedelta(days=days)
+    cutoff = (now or utcnow_naive()) - timedelta(days=days)
     # `P22-11`. A parked run's finished records ARE its state (`run_state`): a
     # Wait of seven days under a one-day window would otherwise resume with
     # nothing to read. Records of a run still in flight are never pruned.
@@ -716,7 +713,7 @@ def record_node_waiting(db, rec, *, waiting: dict, resume_at: datetime | None = 
     if waiting.get("kind") not in WAITING_KINDS:
         raise ValueError(f"not a waiting kind: {waiting.get('kind')!r}")
     body = dict(waiting)
-    body.setdefault("since", _iso(_utcnow()))
+    body.setdefault("since", _iso(utcnow_naive()))
     rec.status = "waiting"
     rec.waiting = json.dumps(body, default=str)
     rec.resume_at = resume_at
@@ -774,7 +771,7 @@ def end_running_items(db, run_id: str, node_id: str, *, error: str) -> int:
         rec.status = "error"
         rec.port = "error"
         rec.error = str(error)[:NODE_ERROR_MAX_CHARS]
-        rec.finished_at = _utcnow()
+        rec.finished_at = utcnow_naive()
     if rows:
         db.commit()
     return len(rows)
@@ -834,7 +831,7 @@ def copy_kept_records(db, *, run_id: str, records, from_run_id: str, words: str)
     Committed. Answers how many."""
     from core.database import TaskRunNode, TaskRunNodeOutput
 
-    at = _iso(_utcnow())
+    at = _iso(utcnow_naive())
     # `B1890`: a kept record that was cut keeps its whole copy too, so the
     # retry's later steps read all of what it made.
     copies = {row.record_id: row for row in db.query(TaskRunNodeOutput).filter(
@@ -882,7 +879,7 @@ def end_waiting_records(db, run_id: str, *, status: str, error: str) -> int:
 
     found = (db.query(TaskRunNode)
              .filter(TaskRunNode.run_id == run_id, TaskRunNode.status == "waiting").all())
-    now = _utcnow()
+    now = utcnow_naive()
     for rec in found:
         rec.status = status
         rec.error = str(error)[:NODE_ERROR_MAX_CHARS]

@@ -24,7 +24,6 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import uuid
 from contextvars import ContextVar
-from urllib.parse import parse_qs, unquote, urlparse
 
 from mcp.types import Tool, TextContent
 
@@ -632,129 +631,13 @@ def _uid_from_fetch_meta(meta_b: bytes) -> str:
     return m.group(1).decode("ascii", errors="ignore") if m else ""
 
 
-def _parse_list_unsubscribe_header(value: str | None) -> list[dict]:
-    raw = str(value or "").strip()
-    if not raw:
-        return []
-    # `B1902`. What `re.findall(r"<([^>]+)>", raw)` found, in linear time.
-    from src.tool_parsing import iter_angle_tags
-    pieces = [raw[inner_start:inner_end] for _s, inner_start, inner_end, _e in iter_angle_tags(raw)]
-    if not pieces:
-        pieces = [p.strip() for p in raw.split(",") if p.strip()]
-    out: list[dict] = []
-    seen = set()
-    for piece in pieces:
-        target = piece.strip().strip("<>").strip()
-        if not target:
-            continue
-        parsed = urlparse(target)
-        scheme = parsed.scheme.lower()
-        key = target.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        if scheme == "mailto":
-            addr = unquote(parsed.path or "").strip()
-            if not addr or "\r" in addr or "\n" in addr:
-                continue
-            query = parse_qs(parsed.query or "", keep_blank_values=True)
-            subject = unquote((query.get("subject") or ["unsubscribe"])[0] or "unsubscribe")
-            body = unquote((query.get("body") or ["unsubscribe"])[0] or "unsubscribe")
-            subject = re.sub(r"[\r\n]+", " ", subject).strip() or "unsubscribe"
-            body = re.sub(r"[\r\n]+", "\n", body).strip() or "unsubscribe"
-            out.append({
-                "kind": "mailto",
-                "target": addr,
-                "subject": subject[:200],
-                "body": body[:1000],
-                "executable": True,
-            })
-        elif scheme in {"http", "https"}:
-            out.append({
-                "kind": "url",
-                "target": target,
-                "executable": False,
-            })
-    return out
+# `B2171`. The one unsubscribe scorer, the Email page's: a message the spam
+# classifier already marked scores the same here as on the page (`D-2026-11-24-02`).
+from src.mail_unsubscribe import (  # noqa: E402
+    dedupe_unsubscribe_candidates as _dedupe_unsubscribe_candidates,
+    unsubscribe_candidate_from_msg as _email_unsubscribe_candidate_from_msg,
+)
 
-
-def _email_unsubscribe_candidate_from_msg(msg, uid: str, folder: str) -> dict | None:
-    sender = _decode_header(msg.get("From", ""))
-    sender_name, sender_addr = email.utils.parseaddr(sender)
-    subject = _decode_header(msg.get("Subject", "(no subject)"))
-    list_id = _decode_header(msg.get("List-Id", ""))
-    precedence = (msg.get("Precedence") or "").strip().lower()
-    auto_submitted = (msg.get("Auto-Submitted") or "").strip().lower()
-    methods = _parse_list_unsubscribe_header(msg.get("List-Unsubscribe"))
-    if not methods:
-        return None
-    reasons: list[str] = ["has unsubscribe header"]
-    score = 45
-    if list_id:
-        score += 20
-        reasons.append("mailing-list header")
-    if precedence in {"bulk", "junk", "list"}:
-        score += 20
-        reasons.append(f"precedence={precedence}")
-    if auto_submitted and auto_submitted != "no":
-        score += 10
-        reasons.append(f"auto-submitted={auto_submitted}")
-    if re.search(r"\b(unsubscribe|newsletter|sale|discount|offer|promo|limited time)\b", (subject or "").lower()):
-        score += 10
-        reasons.append("promotional subject")
-    executable = [m for m in methods if m.get("executable")]
-    return {
-        "uid": str(uid),
-        "folder": folder,
-        "message_id": (msg.get("Message-ID") or "").strip(),
-        "subject": subject,
-        "from_name": sender_name or sender_addr,
-        "from_address": sender_addr,
-        "list_id": list_id,
-        "score": min(score, 100),
-        "reasons": reasons[:5],
-        "methods": methods,
-        "can_execute": bool(executable),
-        "recommended_method": executable[0] if executable else methods[0],
-    }
-
-
-def _unsubscribe_candidate_dedupe_key(candidate: dict) -> tuple[str, str, str]:
-    list_id = str(candidate.get("list_id") or "").strip().lower()
-    method = candidate.get("recommended_method") or {}
-    method_kind = str(method.get("kind") or "").strip().lower()
-    method_target = str(method.get("target") or "").strip().lower()
-    sender = str(candidate.get("from_address") or "").strip().lower()
-    if list_id:
-        return ("list", list_id, method_target or sender)
-    if method_target:
-        return ("method", method_kind, method_target)
-    return ("sender", sender, str(candidate.get("subject") or "").strip().lower())
-
-
-def _dedupe_unsubscribe_candidates(candidates: list[dict]) -> list[dict]:
-    deduped: dict[tuple[str, str, str], dict] = {}
-    for candidate in candidates or []:
-        key = _unsubscribe_candidate_dedupe_key(candidate)
-        existing = deduped.get(key)
-        if not existing:
-            copy = dict(candidate)
-            copy["duplicate_count"] = 1
-            copy["duplicate_uids"] = [str(candidate.get("uid") or "")]
-            deduped[key] = copy
-            continue
-        existing["duplicate_count"] = int(existing.get("duplicate_count") or 1) + 1
-        uid = str(candidate.get("uid") or "")
-        if uid:
-            existing.setdefault("duplicate_uids", []).append(uid)
-        if int(candidate.get("score") or 0) > int(existing.get("score") or 0):
-            keep_count = existing.get("duplicate_count")
-            keep_uids = existing.get("duplicate_uids")
-            replacement = dict(candidate)
-            replacement["duplicate_count"] = keep_count
-            replacement["duplicate_uids"] = keep_uids
-            deduped[key] = replacement
-    return list(deduped.values())
 
 
 def _scan_unsubscribe_candidates(folder="INBOX", account=None, limit=25, max_scan=150) -> dict:

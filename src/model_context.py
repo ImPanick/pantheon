@@ -21,10 +21,11 @@ from urllib.parse import urlparse
 # is refused before the call; a local server costs nothing). `httpx.get` builds
 # a client inside and takes no `mounts=`, so `B1014`'s rule could not reach it.
 from src import paced_http
+from src.local_hosts import LOCAL_ENDPOINT_NAMES
 
 logger = logging.getLogger(__name__)
 
-_LOCAL_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1", "host.docker.internal"}
+_LOCAL_HOSTS = LOCAL_ENDPOINT_NAMES
 _PRIVATE_NETWORKS = (
     ipaddress.ip_network("10.0.0.0/8"),
     ipaddress.ip_network("172.16.0.0/12"),
