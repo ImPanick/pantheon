@@ -37,7 +37,7 @@ class _Sessions:
 
 @pytest.fixture
 def world(apollo_db, tmp_path, monkeypatch):
-    monkeypatch.setattr("src.apollo.lead.pick_lead", lambda owner, text, **k: None)
+    monkeypatch.setattr("src.apollo.goal_lead.write", lambda *a, **k: None)
     manager = signed_in(monkeypatch, tmp_path / "auth")
     sessions = _Sessions()
     import routes.apollo_routes as apollo_routes

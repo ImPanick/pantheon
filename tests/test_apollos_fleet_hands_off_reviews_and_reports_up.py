@@ -82,7 +82,7 @@ def test_a_delegate_is_a_child_task_its_parent_waits_on_and_the_goal_logs_it(db)
 
 
 @pytest.mark.parametrize("kwargs, words", [
-    (dict(to="nobody"), "There's no nobody in the roster. If the goal needs one, propose it"),
+    (dict(to="nobody"), "There's no nobody in the roster. Leave the agent out and a teammate is written"),
     (dict(to="writer", brief="  "), "A hand-off needs a brief"),
     (dict(to="writer", review_by="writer"), "No agent reviews its own work."),
     (dict(to="writer", review_by="ghost"), "There's no ghost in the roster to review it."),
@@ -303,7 +303,7 @@ def test_the_tool_finds_its_task_from_the_run_never_from_the_arguments(db, apoll
     monkeypatch.setattr(runs, "prepare", lambda d, owner, t, **k: (f"sched-{t.lead_agent}", ""))
     out, starts = fleet_tool.run_sync(ADA, "s-1", None, {"action": "delegate", "agent": "writer",
                                                          "brief": "Write the intro", "task_id": "not-this"})
-    assert out["exit_code"] == 0 and out["output"].startswith("Handed to writer as “Writer: Write the intro”.")
+    assert out["exit_code"] == 0 and out["output"].startswith("Handed to Writer as “Writer: Write the intro”.")
     assert starts == ["sched-writer"]
     out, starts = fleet_tool.run_sync(ADA, "s-1", None, {"action": "escalate", "question": "Which list?"})
     assert starts == [] and "The person has the question" in out["output"]

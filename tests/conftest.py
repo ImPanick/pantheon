@@ -283,6 +283,24 @@ def _mail_tls_pins_of_its_own(tmp_path):
 
 
 @_pytest.fixture(autouse=True)
+def _goal_leads_of_its_own(tmp_path):
+    """Apollo writes a lead for each goal it starts (`src/apollo/goal_lead.py`).
+    A test that starts one must not leave it in the developer's data directory,
+    or hand it to the next test, so each test gets a folder of its own."""
+    try:
+        from src.apollo import goal_lead as _goal_lead
+    except Exception:
+        yield
+        return
+    original = _goal_lead.BASE_DIR
+    _goal_lead.BASE_DIR = str(tmp_path / "_goal_leads")
+    try:
+        yield
+    finally:
+        _goal_lead.BASE_DIR = original
+
+
+@_pytest.fixture(autouse=True)
 def _reset_run_context():
     """Clear the per-turn ContextVars between tests (`P4-25`, `P14-02`).
 
