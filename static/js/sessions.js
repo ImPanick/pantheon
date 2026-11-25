@@ -314,6 +314,8 @@ function _markIncognito(sid) {
   if (!ids.includes(sid)) { ids.push(sid); sessionStorage.setItem(_INCOGNITO_SESSIONS_KEY, JSON.stringify(ids)); }
 }
 function _isIncognitoSession(sid) { return _getIncognitoIds().includes(sid); }
+/** Whether a chat is a Nobody chat (Apollo's control pane leaves those out, as the sidebar does). */
+export function isIncognitoSession(sid) { return _isIncognitoSession(sid); }
 async function _cleanupIncognitoSessions() {
   const ids = _getIncognitoIds();
   if (ids.length === 0) return;
