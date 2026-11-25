@@ -20,6 +20,7 @@ import types
 from pathlib import Path
 
 import pytest
+from packaging.version import Version
 
 from tests.helpers.chatterbox_sidecar import (
     URL, Clock, FakeTurbo, Sidecar, blocked_loader, recording, server_module, wav_info,
@@ -303,6 +304,13 @@ def test_the_container_is_pinned_bakes_its_weights_and_runs_offline_as_nobody():
     assert re.search(r'^CMD \["python", "server\.py"\]', text, re.M)
 
 
+# `B2190`: a sidecar pin that cannot follow Pantheon's, and the words beside
+# it in voice/chatterbox/requirements.txt that say why. chatterbox-tts 0.1.7
+# pins gradio 6.8.0, which holds Starlette below 1.0; FastAPI 0.164 onward
+# needs Starlette 1.6.
+HELD_BELOW_PANTHEON = {"fastapi": "`B2190`: not Pantheon's FastAPI pin"}
+
+
 def test_its_requirements_are_pinned_and_keep_the_images_torch():
     lines = [ln.strip() for ln in (FOLDER / "requirements.txt").read_text(encoding="utf-8").splitlines()
              if ln.strip() and not ln.lstrip().startswith("#")]
@@ -313,6 +321,13 @@ def test_its_requirements_are_pinned_and_keep_the_images_torch():
     pins = dict(ln.split("==") for ln in lines)
     core = (ROOT / "requirements.txt").read_text(encoding="utf-8")
     for name in ("fastapi", "uvicorn"):
+        if name in HELD_BELOW_PANTHEON:
+            # `B2190`: held below Pantheon's pin only with the reason beside
+            # it, and never above it.
+            assert HELD_BELOW_PANTHEON[name] in (FOLDER / "requirements.txt").read_text(encoding="utf-8")
+            ours = re.search(rf"^{name}==(\S+)", core, re.M).group(1)
+            assert Version(pins[name]) <= Version(ours), (name, pins[name], ours)
+            continue
         assert f"{name}=={pins[name]}" in core, f"{name} at the version Pantheon itself pins"
     dependabot = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
     assert dependabot.count('directory: "/voice/chatterbox"') == 2, "pip and docker both watched"

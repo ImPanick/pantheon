@@ -15,7 +15,7 @@ Driven through the real routes, the real scheduler and `manage_tasks`
 """
 
 import json
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
 
@@ -24,6 +24,7 @@ from tests.helpers.walker_harness import (
     app_for, arrow, client_for, make_db, node, recording_scheduler, row, runs_of,
     seed_workflow, settle,
 )
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 pytestmark = pytest.mark.asyncio
 
@@ -66,7 +67,7 @@ async def test_a_manual_workflow_switched_on_is_never_due_and_runs_when_run(
         # Never due — even with a next time an older row or a hand edit left.
         db = factory()
         db.query(ScheduledTask).filter(ScheduledTask.id == "wf").first().next_run = (
-            datetime.utcnow() - timedelta(hours=1))
+            utcnow_naive() - timedelta(hours=1))
         db.commit()
         db.close()
         await s._check_due_tasks()

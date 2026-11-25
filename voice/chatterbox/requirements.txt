@@ -7,9 +7,14 @@
 
 # Resemble AI's Chatterbox, Turbo among its models. MIT, code and weights.
 chatterbox-tts==0.1.7
-# The server around it, at the versions Pantheon itself pins.
-fastapi==0.141.1
+# The server around it. `B2190`: not Pantheon's FastAPI pin. chatterbox-tts
+# 0.1.7 pins gradio 6.8.0, which holds Starlette below 1.0, and FastAPI 0.164
+# onward needs Starlette 1.6; 0.163.2 is the newest that resolves beside it
+# (measured with `uv pip compile` for this image's Python 3.11). Move it with
+# a chatterbox-tts release that lifts gradio's ceiling.
+fastapi==0.163.2
 uvicorn==0.54.0
 # Fetches the weights while the image is built (`snapshot_download`); never
-# at run time (`HF_HUB_OFFLINE=1`).
+# at run time (`HF_HUB_OFFLINE=1`). The newest 1.x: chatterbox-tts's
+# transformers 5.2.0 and gradio 6.8.0 both hold it below 2.0 (2.4.0 is out).
 huggingface-hub==1.33.0

@@ -74,7 +74,7 @@ async def test_the_workflow_door_refuses_anything_but_a_person_and_consumes_noth
                                     json={"node_id": "reply", "item": None,
                                           "approval_id": card["approval_id"], "decision": decision})
             assert res.status_code == 403, res.text
-            assert res.json()["detail"] == store.ONLY_A_PERSON_ANSWERS
+            assert res.json()["detail"] == store.ONLY_A_PERSON_ANSWERS_A_STEP
         assert tool_approval_store.peek(card["approval_id"]) is not None, "nothing was consumed"
         await settle(w.s)
         assert w.executed == [], "the sealed action did not run"
@@ -101,7 +101,7 @@ async def test_the_plain_task_door_refuses_anything_but_a_person_and_consumes_no
             res = await client.post(_answer_url(run), headers=caller,
                                     json={"approval_id": approval_id, "decision": decision})
             assert res.status_code == 403, res.text
-            assert res.json()["detail"] == store.ONLY_A_PERSON_ANSWERS
+            assert res.json()["detail"] == store.ONLY_A_PERSON_ANSWERS_A_STEP
         assert tool_approval_store.peek(approval_id) is not None, "nothing was consumed"
         await settle(w.s)
         assert w.executed == []
@@ -115,6 +115,6 @@ async def test_the_plain_task_door_refuses_anything_but_a_person_and_consumes_no
 def test_the_sentence_says_who_may_answer_in_plain_words():
     """What the assistant reads back when it tries (`Law 15`): who may answer,
     and where — the same shape as the checked and fix doors' sentences."""
-    assert store.ONLY_A_PERSON_ANSWERS == (
+    assert store.ONLY_A_PERSON_ANSWERS_A_STEP == (
         "Only you can answer a step that is waiting for your yes, from the notification or "
         "the Workbench — not an API token and not your assistant.")

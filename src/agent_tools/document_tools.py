@@ -8,6 +8,7 @@ from src.constants import MAX_READ_CHARS
 from src.tool_approvals import document_content_digest
 from src.tool_utils import _parse_tool_args, get_upload_handler
 from src.upload_handler import reserve_upload_references
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 logger = logging.getLogger(__name__)
 
@@ -1279,7 +1280,7 @@ class ManageDocumentTool:
             if not ts:
                 return 'never'
             try:
-                now = datetime.now(timezone.utc) if ts.tzinfo is not None else datetime.utcnow()
+                now = datetime.now(timezone.utc) if ts.tzinfo is not None else utcnow_naive()
                 diff = (now - ts).total_seconds()
             except Exception:
                 return 'unknown'

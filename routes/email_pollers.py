@@ -48,6 +48,7 @@ from routes.email_helpers import (
     SCHEDULED_DB, _EMAIL_REPLY_SYS_PROMPT_BASE, _email_cache_owner_clause,
     _generate_scheduled_email_summary, _email_summary_failure_log_detail,
 )
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +160,7 @@ def _away_reply_active(settings: dict, account_id: str | None) -> bool:
         if selected and selected != str(account_id or ""):
             return False
 
-    today = datetime.utcnow().date()
+    today = utcnow_naive().date()
     start = _email_date_only(settings.get("email_auto_reply_start"))
     end = _email_date_only(settings.get("email_auto_reply_end"))
     if start and today < start:
@@ -303,7 +304,7 @@ def _away_reply_already_sent(settings: dict, account_owner: str, account_id: str
             ).fetchone()
             return bool(row)
 
-        since = datetime.utcnow().timestamp() - cooldown
+        since = utcnow_naive().timestamp() - cooldown
         rows = conn.execute(
             "SELECT sent_at FROM email_away_replies WHERE owner=? AND account_id=? AND sender_addr=? ORDER BY sent_at DESC LIMIT 5",
             (owner, aid, sender),
@@ -338,7 +339,7 @@ def _record_away_reply(settings: dict, account_owner: str, account_id: str | Non
                 (sender_addr or "").strip().lower(),
                 subject or "",
                 _away_reply_period_key(settings),
-                datetime.utcnow().isoformat(),
+                utcnow_naive().isoformat(),
             ),
         )
         conn.commit()
@@ -600,7 +601,7 @@ async def _auto_summarize_pass_single_inner(days_back: int = 1, account_id: str 
         await _emit_progress(progress_cb, "Connecting to mail…")
         conn = _imap_connect(account_id, owner=account_owner)
         from datetime import timedelta as _td
-        since = (datetime.utcnow() - _td(days=max(1, days_back))).strftime("%d-%b-%Y")
+        since = (utcnow_naive() - _td(days=max(1, days_back))).strftime("%d-%b-%Y")
         # uid_list carries real IMAP UIDs, matching the email UI/read routes.
         # Using sequence numbers here made background-cached replies miss when
         # the user clicked the same visible message in the UI.
@@ -861,7 +862,7 @@ async def _auto_summarize_pass_single_inner(days_back: int = 1, account_id: str 
                                 INSERT OR REPLACE INTO email_summaries
                                 (message_id, owner, uid, folder, subject, sender, summary, model_used, created_at)
                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            """, (message_id, account_owner or "", uid.decode() if isinstance(uid, bytes) else str(uid), _folder, subject, sender, summary, model, datetime.utcnow().isoformat()))
+                            """, (message_id, account_owner or "", uid.decode() if isinstance(uid, bytes) else str(uid), _folder, subject, sender, summary, model, utcnow_naive().isoformat()))
                             _c.commit()
                             _c.close()
                             _sum_existing.add(message_id)
@@ -913,7 +914,7 @@ async def _auto_summarize_pass_single_inner(days_back: int = 1, account_id: str 
                                 INSERT OR REPLACE INTO email_ai_replies
                                 (message_id, owner, uid, folder, reply, model_used, created_at)
                                 VALUES (?, ?, ?, ?, ?, ?, ?)
-                            """, (message_id, account_owner or "", uid.decode() if isinstance(uid, bytes) else str(uid), _folder, reply, model, datetime.utcnow().isoformat()))
+                            """, (message_id, account_owner or "", uid.decode() if isinstance(uid, bytes) else str(uid), _folder, reply, model, utcnow_naive().isoformat()))
                             _c.commit()
                             _c.close()
                             _reply_existing.add(message_id)
@@ -1148,7 +1149,7 @@ async def _auto_summarize_pass_single_inner(days_back: int = 1, account_id: str 
                                         uid.decode() if isinstance(uid, bytes) else str(uid),
                                         json.dumps(_cal_event_uids),
                                         _cal_run_count,
-                                        datetime.utcnow().isoformat(),
+                                        utcnow_naive().isoformat(),
                                     ),
                                 )
                                 _cc.commit()
@@ -1208,7 +1209,7 @@ async def _auto_summarize_pass_single_inner(days_back: int = 1, account_id: str 
                                 _uc.execute(
                                     "INSERT OR REPLACE INTO email_urgency_alerts "
                                     "(message_id, owner, created_at) VALUES (?, ?, ?)",
-                                    (message_id, account_owner or "", datetime.utcnow().isoformat())
+                                    (message_id, account_owner or "", utcnow_naive().isoformat())
                                 )
                                 _uc.commit()
                                 _uc.close()
@@ -1271,7 +1272,7 @@ async def _auto_summarize_pass_single_inner(days_back: int = 1, account_id: str 
                                     outer_alert["From"] = cfg["from_address"]
                                     outer_alert["To"] = to_addr
                                     outer_alert["Subject"] = alert_subject
-                                    outer_alert["Date"] = datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S +0000")
+                                    outer_alert["Date"] = utcnow_naive().strftime("%a, %d %b %Y %H:%M:%S +0000")
                                     outer_alert["X-Priority"] = "1"
                                     outer_alert["Importance"] = "high"
                                     outer_alert.attach(MIMEText(alert_body, "plain", "utf-8"))
@@ -1356,7 +1357,7 @@ async def _auto_summarize_pass_single_inner(days_back: int = 1, account_id: str 
                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """, (message_id, account_owner or "", account_id or "", uid.decode() if isinstance(uid, bytes) else str(uid), _folder, subject, sender,
                                   json.dumps(tags), 1 if is_spam else 0,
-                                  spam_reason, moved_to, model, datetime.utcnow().isoformat()))
+                                  spam_reason, moved_to, model, utcnow_naive().isoformat()))
                             _c.commit()
                             _c.close()
                             _tag_existing.add(message_id)
@@ -1434,7 +1435,7 @@ def _scheduled_poll_once() -> dict:
     sent = []
     failed = []
     try:
-        now_iso = datetime.utcnow().isoformat()
+        now_iso = utcnow_naive().isoformat()
         conn = sqlite3.connect(SCHEDULED_DB)
         cols = [row[1] for row in conn.execute("PRAGMA table_info(scheduled_emails)").fetchall()]
         kind_expr = "pantheon_kind" if "pantheon_kind" in cols else "'scheduled' AS pantheon_kind"
@@ -1493,7 +1494,7 @@ def _scheduled_poll_once() -> dict:
                 if r[2]:
                     outer["Cc"] = r[2]
                 outer["Subject"] = r[4] or ""
-                outer["Date"] = datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S +0000")
+                outer["Date"] = utcnow_naive().strftime("%a, %d %b %Y %H:%M:%S +0000")
                 outer["X-Pantheon-Origin"] = "pantheon-ui"
                 outer["X-Pantheon-Kind"] = re.sub(r"[^A-Za-z0-9_.-]", "-", pantheon_kind or "scheduled")[:64]
                 outer["X-Pantheon-Ref"] = sid

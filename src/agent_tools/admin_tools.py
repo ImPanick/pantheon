@@ -28,6 +28,7 @@ from src.settings_requests import (
     tool_toggle_targets,
 )
 from src.tool_utils import get_mcp_manager, _parse_tool_args
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 logger = logging.getLogger(__name__)
 
@@ -57,10 +58,9 @@ async def do_manage_endpoints(content: str, owner: Optional[str] = None) -> Dict
             if not base_url:
                 return {"error": "base_url is required", "exit_code": 1}
             eid = str(_uuid.uuid4())[:8]
-            from datetime import datetime
             ep = ModelEndpoint(id=eid, name=name or base_url, base_url=base_url,
                                api_key=api_key, is_enabled=True,
-                               created_at=datetime.utcnow(), updated_at=datetime.utcnow())
+                               created_at=utcnow_naive(), updated_at=utcnow_naive())
             db.add(ep)
             db.commit()
             return {"response": f"Added endpoint '{name or base_url}' (id: {eid})", "exit_code": 0}
@@ -291,7 +291,6 @@ async def do_manage_mcp(content: str, owner: Optional[str] = None) -> Dict:
 
     elif action == "add":
         from core.database import SessionLocal, McpServer
-        from datetime import datetime
         name = args.get("name", "")
         command = args.get("command", "")
         cmd_args = args.get("args", [])
@@ -312,7 +311,7 @@ async def do_manage_mcp(content: str, owner: Optional[str] = None) -> Dict:
             srv = McpServer(id=sid, name=name, transport="stdio", command=command,
                             args=json.dumps(cmd_args) if isinstance(cmd_args, list) else cmd_args,
                             env=json.dumps(env) if isinstance(env, dict) else env,
-                            is_enabled=True, created_at=datetime.utcnow(), updated_at=datetime.utcnow())
+                            is_enabled=True, created_at=utcnow_naive(), updated_at=utcnow_naive())
             db.add(srv)
             db.commit()
         finally:
@@ -519,7 +518,6 @@ async def do_manage_webhooks(content: str, owner: Optional[str] = None) -> Dict:
 
         elif action == "add":
             import uuid as _uuid
-            from datetime import datetime
             from src.webhook_manager import validate_events, validate_webhook_url
             name = args.get("name", "")
             url = args.get("url", "")
@@ -534,7 +532,7 @@ async def do_manage_webhooks(content: str, owner: Optional[str] = None) -> Dict:
             wid = str(_uuid.uuid4())[:8]
             hook = Webhook(id=wid, name=name or url, url=url,
                            events=events, is_active=True,
-                           created_at=datetime.utcnow(), updated_at=datetime.utcnow())
+                           created_at=utcnow_naive(), updated_at=utcnow_naive())
             db.add(hook)
             db.commit()
             return {"response": f"Added webhook '{name or url}'", "exit_code": 0}
@@ -590,7 +588,6 @@ async def do_manage_tokens(content: str, owner: Optional[str] = None) -> Dict:
 
         elif action == "create":
             import uuid as _uuid, bcrypt
-            from datetime import datetime
             from core.api_tokens import (
                 TOKEN_PREFIX_LEN, invalidate_token_cache, mint_raw_token,
             )
@@ -623,7 +620,7 @@ async def do_manage_tokens(content: str, owner: Optional[str] = None) -> Dict:
             t = ApiToken(id=tid, owner=owner, name=name, token_hash=token_hash,
                          token_prefix=raw_token[:TOKEN_PREFIX_LEN], scopes="chat",
                          is_active=True,
-                         created_at=datetime.utcnow(), updated_at=datetime.utcnow())
+                         created_at=utcnow_naive(), updated_at=utcnow_naive())
             db.add(t)
             db.commit()
             # Bearer auth serves from an in-memory map that only rebuilds when

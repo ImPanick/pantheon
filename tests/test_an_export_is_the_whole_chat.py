@@ -99,7 +99,7 @@ def _seed(db_factory, sid: str = SID, owner: str = OWNER, turns: int = TURNS) ->
 
 def _app(monkeypatch, db_factory, person: str = OWNER):
     """The real export route, over this database, asked by `person`."""
-    manager = SessionManager(sessions_file=":memory:")
+    manager = SessionManager()
     monkeypatch.setattr(session_routes, "SessionLocal", db_factory)
     monkeypatch.setattr(history_routes, "SessionLocal", db_factory)
     import core.session_manager as sm
@@ -355,7 +355,7 @@ def test_the_body_is_produced_a_message_at_a_time(monkeypatch):
 
     engine, db_factory = _database()
     _seed(db_factory)
-    manager = SessionManager(sessions_file=":memory:")
+    manager = SessionManager()
     monkeypatch.setattr(session_routes, "SessionLocal", db_factory)
     import core.session_manager as sm
     monkeypatch.setattr(sm, "SessionLocal", db_factory)

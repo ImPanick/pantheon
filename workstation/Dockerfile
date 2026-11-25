@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # The Pantheon workstation — `P20-01`, `D-2026-09-30-03`.
 #
-# An Ubuntu 24.04 userland (or Debian 13, Fedora 44 or Rocky Linux 9: `WORKSTATION_OS`, `B1747`) the agents work in: one Unix account and one X
+# An Ubuntu 24.04 userland (or Debian 13, Fedora 45 or Rocky Linux 9: `WORKSTATION_OS`, `B1747`) the agents work in: one Unix account and one X
 # display per person, a desktop (XFCE themed to the cockpit, `D-2026-10-31-02`:
 # a terminal, Firefox, a file manager), the tools a
 # task usually needs, and `agentd` answering `workstation/protocol.py` on 7040.
@@ -28,15 +28,23 @@
 # way Ubuntu is: a tag for a reader, a digest for the builder (each read
 # 2026-11-02 from Docker Hub's record of the multi-platform index).
 #   debian  Debian 13 (trixie), Debian's own official image, a dated build.
-#   fedora  Fedora 44, Fedora's official image (Fedora publishes no dated
+#   fedora  Fedora 45, Fedora's official image (Fedora publishes no dated
 #           tag, so the digest alone says which build).
 #   rocky   Rocky Linux 9 (the RHEL 9 family), the Rocky project's own image,
 #           a dated build.
+# `B2214`, 2026-11-24: all four moved to the newest build Docker Hub listed that
+# day (Ubuntu noble-20261110.1, Debian trixie-20261123, Fedora 45 — what
+# `fedora:latest` pointed at — and Rocky 9.9.20261112.0), each digest the
+# multi-platform index's. Rocky stays on 9: Rocky 10 is out (10.3), but
+# KasmVNC, the live desktop, publishes no EL10 build (its `builder/` has
+# `oracle_8` and `oracle_9` only, read at its newest tag v1.5.2 and on master),
+# and `provision.sh` refuses a Rocky build whose desktop does not install. Rocky
+# 10 also needs an x86-64-v3 CPU, which Rocky 9 does not.
 ARG WORKSTATION_OS=ubuntu
-FROM ubuntu:noble-20261024.1@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852 AS base-ubuntu
-FROM debian:trixie-20261027@sha256:2dc419c6d7fe3dad0a2f9fd469c34cc90b0f9ba642d8fde837fe3d7d34a0e7f1 AS base-debian
-FROM fedora:44@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80 AS base-fedora
-FROM rockylinux/rockylinux:9.8.20260525.0@sha256:8101994123cf3d0a8fee517bee7f39e555c7d92bd2d9eb3303cc988a0eeed00f AS base-rocky
+FROM ubuntu:noble-20261110.1@sha256:562111b88caa79c71391c0c4d3c2114a7d5c35915c20561fd893cb1e07929e6b AS base-ubuntu
+FROM debian:trixie-20261123@sha256:3cda3ca472ce45507a5109c6a3907093e24d9ae67d55954c9a07a45665dafba2 AS base-debian
+FROM fedora:45@sha256:a7d72ba2745b100a3351087472e5ee7b2450af7cf331e7673007e3817612839c AS base-fedora
+FROM rockylinux/rockylinux:9.9.20261112.0@sha256:bb5755f96bec05ff26165e779ec843d7167544be9e50770508f307019a6d05c4 AS base-rocky
 
 FROM base-${WORKSTATION_OS}
 ARG WORKSTATION_OS

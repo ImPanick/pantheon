@@ -72,7 +72,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from core.database import SessionLocal
-from src.auth_helpers import ONLY_A_PERSON_ANSWERS, get_current_user, request_is_a_person
+from src.auth_helpers import get_current_user, request_is_a_person
 from src import workflow_store as store
 from src.workflow_store import WorkflowRefused
 
@@ -1056,7 +1056,7 @@ def setup_workflow_routes(task_scheduler) -> APIRouter:
         """
         from src.task_scheduler import QuestionRefused, _resolve_task_timezone
         if not request_is_a_person(request):
-            raise WorkflowRefused(403, store.ONLY_A_PERSON_ANSWERS)
+            raise WorkflowRefused(403, store.ONLY_A_PERSON_ANSWERS_A_STEP)
         body = await _body(request)
         decision = str(body.get("decision") or "").strip().lower()
         if decision == "approve":

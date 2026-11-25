@@ -52,7 +52,7 @@ Splitting the families into separate services is deliberate:
 | `pantheon` | The app: web UI, API, agent loop, scheduler, mail pollers | `ghcr.io/impanick/pantheon` (published from `main`) or built from `Dockerfile` | `./data`, `./logs` (bind mounts by default) | None added. Drops to `PUID`/`PGID`. |
 | `chromadb` | Vector store for memory and document search | `chromadb/chroma:1.5.9`, pinned | `chromadb-data` volume | None added |
 | `searxng` | Self-hosted web search | `searxng/searxng`, pinned | `searxng-data` volume | `CHOWN`, `SETGID`, `SETUID`, `DAC_OVERRIDE` only, everything else dropped |
-| `ntfy` | Push for lock-screen approvals | `binwiederhier/ntfy:v2.34.0`, pinned | `ntfy-cache` volume | None added |
+| `ntfy` | Push for lock-screen approvals | `binwiederhier/ntfy:v2.38.2`, pinned | `ntfy-cache` volume | None added |
 | `workstation-net` | Owns the network namespace the container workstation runs in, and the only thing allowed to write its firewall rules | built from `workstation/` | pairing volume | `NET_ADMIN`, `CHOWN`; all else dropped |
 | `workstation` | Container backend for the desktop: one Ubuntu container, a Unix account and desktop per person. For hosts without KVM. | built from `workstation/` | `workstation-homes`, Android SDK volume | No added capability, `NET_RAW` dropped, one device-cgroup rule for `/dev/kvm` |
 | `workstation-debian` / `-fedora` / `-rocky` | The same desktop on another distro, for people who pick it. Off unless its profile is on. | built from `workstation/` | own homes and pairing volumes | as `workstation` |

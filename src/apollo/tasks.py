@@ -21,11 +21,11 @@ but those inside an airgap's edge (`src.apollo.spaces`).
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from src.apollo import budget as B
 from src.apollo.errors import ApolloRefused
+from src.utc_clock import utcnow_naive  # `B2173`: the one clock
 
 STATES = ("working", "needs_you", "waiting", "done")
 STATE_WORDS = {"working": "Working", "needs_you": "Needs you", "waiting": "Waiting", "done": "Done"}
@@ -34,10 +34,6 @@ BRIEF_MAX = 8000
 LINE_MAX = 600
 KIND_MAX = 60
 STARTERS = ("person", "apollo")
-
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def _line(value: Any, limit: int, what: str, *, required: bool = False) -> Optional[str]:
@@ -171,8 +167,8 @@ def set_state(task, state: str, *, question: Any = None, next_step: Any = ...,
     if outcome is not ...:
         task.outcome = _line(outcome, LINE_MAX, "An outcome")
     task.state = state
-    task.done_at = _now() if state == "done" else None
-    task.updated_at = _now()
+    task.done_at = utcnow_naive() if state == "done" else None
+    task.updated_at = utcnow_naive()
     return task
 
 
@@ -212,7 +208,7 @@ def update(db, owner: str, task_id: Any, fields: Dict[str, Any]):
             task.next_step = _line(fields["next_step"], LINE_MAX, "A next step")
         if "outcome" in fields:
             task.outcome = _line(fields["outcome"], LINE_MAX, "An outcome")
-    task.updated_at = _now()
+    task.updated_at = utcnow_naive()
     db.flush()
     return task
 

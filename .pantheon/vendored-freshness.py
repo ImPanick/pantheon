@@ -180,7 +180,8 @@ def ask(records: Iterable[dict],
         # 3 — `B336`. The packages INSIDE a bundle, at the versions its bytes
         # carry: html2pdf.js 0.14.0 had no advisory of its own and shipped
         # jsPDF 4.0.0 with nine and DOMPurify 3.3.1 with eighteen (gone with
-        # the bundle, `B421`); docx 9.7.1 carries JSZip 3.10.1 (`B424`).
+        # the bundle, `B421`); docx 9.7.1 carried JSZip 3.10.1 (`B424`), and
+        # Mermaid carries DOMPurify (`B2219` moved the subject there).
         # `check-vendored-versions.py` rule 6 checks each version against the
         # shipped bytes offline, so what is asked here is what is in the file.
         for inner in rec.get("contains", []):

@@ -69,6 +69,7 @@ from dataclasses import dataclass
 from typing import Iterable, List, Optional, Tuple
 
 from src.outbound_fetch import CLOUD_METADATA_NETWORKS, _always_blocked, _in_lan
+from src.local_hosts import LOOPBACK_ALIASES, METADATA_NAMES
 
 logger = logging.getLogger(__name__)
 
@@ -91,9 +92,9 @@ REFUSED_SENTENCE = (
 )
 
 #: Names refused before any lookup, whoever asks.
-_METADATA_NAMES = frozenset({"metadata", "metadata.google.internal"})
+_METADATA_NAMES = METADATA_NAMES
 #: Names that are this machine without a lookup.
-_LOOPBACK_NAMES = frozenset({"localhost", "ip6-localhost", "ip6-loopback"})
+_LOOPBACK_NAMES = LOOPBACK_ALIASES
 
 #: NAT64's well-known prefix (RFC 6052): the last 32 bits are an IPv4 address.
 _NAT64 = ipaddress.ip_network("64:ff9b::/96")

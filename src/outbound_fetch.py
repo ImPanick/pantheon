@@ -13,14 +13,13 @@ import contextlib
 import contextvars
 import ipaddress
 import socket
-import ssl
-from typing import Callable, Iterable, Optional, cast
+from typing import Callable, Optional
 from urllib.parse import urljoin, urlparse
 
-import httpcore
 import httpx
 
 from src.constants import WEB_FETCH_HARD_MAX_BYTES, WEB_FETCH_SOFT_MAX_BYTES
+from src.local_hosts import is_never_fetched_name
 
 
 _PRIVATE_NETWORKS = (
@@ -200,7 +199,7 @@ def _public_http_url(
         # is exactly what they want reached; it is judged by the address it
         # resolves to, so a name that resolves to loopback or does not resolve
         # at all is still refused.
-        if lower in ("localhost", "metadata", "metadata.google.internal") or lower.endswith(".localhost"):
+        if is_never_fetched_name(lower):
             return False
         allow_lan = lan_allowed()
         try:
@@ -254,7 +253,7 @@ def _resolve_public_ips(
             )
     except ImportError:
         pass
-    if host in ("localhost", "metadata", "metadata.google.internal"):
+    if is_never_fetched_name(host):
         raise httpx.RequestError(f"Blocked non-public hostname: {host}")
     try:
         ip = ipaddress.ip_address(host)
@@ -273,99 +272,15 @@ def _resolve_public_ips(
     return addrs
 
 
-class _PinnedBackend(httpcore.NetworkBackend):
-    """Network backend that connects to a pre-resolved IP."""
+# `B2170`. The DNS-pinned transport is `src/pinned_transport.py`'s: one copy for
+# this, webhook delivery, an integration's `api_call` and the skill importer, and
+# one trust store (certifi plus `SSL_CERT_FILE`), where this copy used the
+# system's. `services/search/content.py` re-exports these names.
+from src.pinned_transport import (  # noqa: E402
+    PinnedBackend as _PinnedBackend,  # noqa: F401 — re-exported by services/search/content.py
+    PinnedTransport as _PinnedTransport,
+)
 
-    def __init__(self, ip: ipaddress._BaseAddress):
-        self._ip = str(ip)
-        self._real = httpcore.SyncBackend()
-
-    def connect_tcp(
-        self,
-        host: str,
-        port: int,
-        timeout: float | None = None,
-        local_address: str | None = None,
-        socket_options=None,
-    ):
-        return self._real.connect_tcp(
-            self._ip, port, timeout, local_address, socket_options
-        )
-
-    def connect_unix_socket(self, path, timeout=None, socket_options=None):
-        return self._real.connect_unix_socket(path, timeout, socket_options)
-
-    def sleep(self, seconds: float) -> None:
-        return self._real.sleep(seconds)
-
-
-_HTTPCORE_TO_HTTPX_EXC = {
-    httpcore.ConnectError: httpx.ConnectError,
-    httpcore.ConnectTimeout: httpx.ConnectTimeout,
-    httpcore.LocalProtocolError: httpx.LocalProtocolError,
-    httpcore.NetworkError: httpx.NetworkError,
-    httpcore.PoolTimeout: httpx.PoolTimeout,
-    httpcore.ProtocolError: httpx.ProtocolError,
-    httpcore.ProxyError: httpx.ProxyError,
-    httpcore.ReadError: httpx.ReadError,
-    httpcore.ReadTimeout: httpx.ReadTimeout,
-    httpcore.RemoteProtocolError: httpx.RemoteProtocolError,
-    httpcore.TimeoutException: httpx.TimeoutException,
-    httpcore.UnsupportedProtocol: httpx.UnsupportedProtocol,
-    httpcore.WriteError: httpx.WriteError,
-    httpcore.WriteTimeout: httpx.WriteTimeout,
-}
-
-
-class _PinnedTransport(httpx.BaseTransport):
-    """Transport that pins every TCP connect to a pre-resolved IP."""
-
-    def __init__(self, ip: ipaddress._BaseAddress, *, http2: bool = False):
-        self._pool = httpcore.ConnectionPool(
-            ssl_context=ssl.create_default_context(),
-            http1=True,
-            http2=http2,
-            network_backend=_PinnedBackend(ip),
-        )
-
-    def __enter__(self):
-        self._pool.__enter__()
-        return self
-
-    def __exit__(self, exc_type=None, exc_value=None, traceback=None) -> None:
-        self._pool.__exit__(exc_type, exc_value, traceback)
-
-    def handle_request(self, request: httpx.Request) -> httpx.Response:
-        httpcore_req = httpcore.Request(
-            method=request.method,
-            url=httpcore.URL(
-                scheme=request.url.raw_scheme,
-                host=request.url.raw_host,
-                port=request.url.port,
-                target=request.url.raw_path,
-            ),
-            headers=request.headers.raw,
-            content=request.stream,
-            extensions=request.extensions,
-        )
-        try:
-            httpcore_resp = self._pool.handle_request(httpcore_req)
-            content = b"".join(cast(Iterable[bytes], httpcore_resp.stream))
-        except Exception as exc:
-            mapped = _HTTPCORE_TO_HTTPX_EXC.get(type(exc))
-            if mapped is not None:
-                raise mapped(str(exc)) from exc
-            raise
-
-        return httpx.Response(
-            status_code=httpcore_resp.status,
-            headers=httpcore_resp.headers,
-            content=content,
-            extensions=httpcore_resp.extensions,
-        )
-
-    def close(self) -> None:
-        self._pool.close()
 
 
 class BodyTooLargeError(Exception):

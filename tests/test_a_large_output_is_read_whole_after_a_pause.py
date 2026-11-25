@@ -115,7 +115,7 @@ async def test_the_whole_copy_goes_with_its_record(factory, monkeypatch):
         # cut too; c's is small and keeps no copy.
         kept = {r.record_id for r in db.query(TaskRunNodeOutput).all()}
         assert kept == {by["a"]["id"], by["w"]["id"]}, "only a cut record keeps a copy"
-        removed = wr.prune_node_records(db, days=1, now=wr._utcnow() + timedelta(days=2))
+        removed = wr.prune_node_records(db, days=1, now=wr.utcnow_naive() + timedelta(days=2))
         assert removed == 3
         assert db.query(TaskRunNodeOutput).count() == 0, "the record's retention"
     finally:

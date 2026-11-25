@@ -7,7 +7,7 @@ from typing import Dict, Any
 
 from src.constants import (
     DATA_DIR, PERSONAL_DIR, RUNBOOK_DIR, UPLOAD_DIR,
-    SESSIONS_FILE, DEFAULT_HOST, OPENAI_API_KEY
+    DEFAULT_HOST, OPENAI_API_KEY
 )
 from src.memory import MemoryManager
 from src.memory_provider import MemoryProviderRegistry, NativeMemoryProvider
@@ -48,7 +48,7 @@ def initialize_managers(base_dir: str, rag_manager=None) -> Dict[str, Any]:
     # Initialize core managers
     memory_manager = MemoryManager(DATA_DIR)
     skills_manager = SkillsManager(DATA_DIR)
-    session_manager = SessionManager(SESSIONS_FILE)
+    session_manager = SessionManager()
     set_session_manager(session_manager)  # Enable Session.add_message() persistence
     upload_handler = UploadHandler(base_dir, UPLOAD_DIR)
     session_manager.upload_handler = upload_handler

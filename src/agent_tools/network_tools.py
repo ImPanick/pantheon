@@ -36,16 +36,10 @@ TOOL_NAME = "network"
 ACTIONS = ("list", "reach")
 
 
-def lan_reach_on() -> bool:
-    """`agent_lan_reach` (default on): whether this install lets the agent reach
-    the LAN at all — this tool and the LAN half of `web_fetch`. An admin turns
-    it off for a shared box that should stay on the public internet."""
-    try:
-        from src.settings import get_setting
-        from src.env_flags import tool_arg_truthy
-        return tool_arg_truthy(get_setting("agent_lan_reach", True), default=True)
-    except Exception:
-        return True
+# `agent_lan_reach` (default on): whether this install lets the agent reach the
+# LAN at all — this tool and the LAN half of `web_fetch`. `B2175`: one reading
+# of the setting, `web_fetch`'s; this module had a same-bodied copy.
+from src.outbound_fetch import _lan_reach_on as lan_reach_on  # noqa: E402
 
 
 # The line form: "host port", "host:port", or "[v6]:port".

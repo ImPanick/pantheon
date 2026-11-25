@@ -27,7 +27,6 @@ import re
 import html
 import io
 import zipfile
-from urllib.parse import parse_qs, unquote, urlparse
 from html.parser import HTMLParser as _HTMLParser
 import logging
 import uuid
@@ -75,6 +74,7 @@ from routes.email_helpers import (
 )
 from routes.email_pollers import _start_poller, _INBOX_HOOKS
 from src.env_flags import request_flag
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 logger = logging.getLogger(__name__)
 
@@ -333,7 +333,7 @@ def _set_auto_reply_settings_for_account(settings: dict, data: dict, account_id:
     if "email_auto_reply" in data:
         next_auto_reply = bool(target.get("email_auto_reply", False))
         if next_auto_reply and (not prev_auto_reply or not str(target.get("email_auto_reply_enabled_at") or "").strip()):
-            target["email_auto_reply_enabled_at"] = datetime.utcnow().isoformat()
+            target["email_auto_reply_enabled_at"] = utcnow_naive().isoformat()
         elif not next_auto_reply:
             target.pop("email_auto_reply_enabled_at", None)
     if key:
@@ -687,7 +687,7 @@ def _record_email_received_events(owner: str, account_id: str | None, folder: st
     try:
         from src.event_bus import fire_event
         account_key, older_keys = _event_account_keys(account_id, owner)
-        now = datetime.utcnow().isoformat() + "Z"
+        now = utcnow_naive().isoformat() + "Z"
         keys = []
         # `P22-09` (`SLICE-CD-DESIGN` § 0.12). The message dicts are already in
         # hand, so each event can also say who sent it and what it is about —
@@ -956,148 +956,12 @@ def _uid_from_fetch_meta(meta_b: bytes) -> str:
     return m.group(1).decode() if m else ""
 
 
-def _parse_list_unsubscribe_header(value: str | None) -> list[dict]:
-    """Parse RFC List-Unsubscribe entries into safe reviewable actions.
+# `B2171`. The one unsubscribe scorer, shared with the agent's mail tools.
+from src.mail_unsubscribe import (  # noqa: E402
+    dedupe_unsubscribe_candidates as _dedupe_unsubscribe_candidates,
+    unsubscribe_candidate_from_msg as _email_unsubscribe_candidate_from_msg,
+)
 
-    We return mailto/http entries but only the mailto kind is executable by the
-    first-pass Pantheon flow. HTTP unsubscribe links are useful evidence but
-    often contain tracking tokens and should be opened manually unless/until we
-    add a browser-confirmed flow.
-    """
-    raw = str(value or "").strip()
-    if not raw:
-        return []
-    # `B1902`. What `re.findall(r"<([^>]+)>", raw)` found, in linear time.
-    from src.tool_parsing import iter_angle_tags
-    pieces = [raw[inner_start:inner_end] for _s, inner_start, inner_end, _e in iter_angle_tags(raw)]
-    if not pieces:
-        pieces = [p.strip() for p in raw.split(",") if p.strip()]
-    out: list[dict] = []
-    seen = set()
-    for piece in pieces:
-        target = piece.strip().strip("<>").strip()
-        if not target:
-            continue
-        parsed = urlparse(target)
-        scheme = parsed.scheme.lower()
-        key = target.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        if scheme == "mailto":
-            addr = unquote(parsed.path or "").strip()
-            if not addr or "\r" in addr or "\n" in addr:
-                continue
-            query = parse_qs(parsed.query or "", keep_blank_values=True)
-            subject = unquote((query.get("subject") or ["unsubscribe"])[0] or "unsubscribe")
-            body = unquote((query.get("body") or ["unsubscribe"])[0] or "unsubscribe")
-            subject = re.sub(r"[\r\n]+", " ", subject).strip() or "unsubscribe"
-            body = re.sub(r"[\r\n]+", "\n", body).strip() or "unsubscribe"
-            out.append({
-                "kind": "mailto",
-                "target": addr,
-                "subject": subject[:200],
-                "body": body[:1000],
-                "executable": True,
-            })
-        elif scheme in {"http", "https"}:
-            out.append({
-                "kind": "url",
-                "target": target,
-                "executable": False,
-            })
-    return out
-
-
-def _email_unsubscribe_candidate_from_msg(msg, uid: str, folder: str, *, spam_cached: dict | None = None) -> dict | None:
-    sender = _decode_header(msg.get("From", ""))
-    sender_name, sender_addr = email.utils.parseaddr(sender)
-    subject = _decode_header(msg.get("Subject", "(no subject)"))
-    list_id = _decode_header(msg.get("List-Id", ""))
-    precedence = (msg.get("Precedence") or "").strip().lower()
-    auto_submitted = (msg.get("Auto-Submitted") or "").strip().lower()
-    methods = _parse_list_unsubscribe_header(msg.get("List-Unsubscribe"))
-    has_unsub = bool(methods)
-    reasons: list[str] = []
-    score = 0
-    if has_unsub:
-        score += 45
-        reasons.append("has unsubscribe header")
-    if list_id:
-        score += 20
-        reasons.append("mailing-list header")
-    if precedence in {"bulk", "junk", "list"}:
-        score += 20
-        reasons.append(f"precedence={precedence}")
-    if auto_submitted and auto_submitted != "no":
-        score += 10
-        reasons.append(f"auto-submitted={auto_submitted}")
-    if spam_cached and spam_cached.get("spam"):
-        score += 35
-        if spam_cached.get("reason"):
-            reasons.append(str(spam_cached.get("reason")))
-        else:
-            reasons.append("previously classified as spam")
-    subj_l = (subject or "").lower()
-    if re.search(r"\b(unsubscribe|newsletter|sale|discount|offer|promo|limited time)\b", subj_l):
-        score += 10
-        reasons.append("promotional subject")
-    executable = [m for m in methods if m.get("executable")]
-    if score < 45 or not has_unsub:
-        return None
-    return {
-        "uid": str(uid),
-        "folder": folder,
-        "message_id": (msg.get("Message-ID") or "").strip(),
-        "subject": subject,
-        "from_name": sender_name or sender_addr,
-        "from_address": sender_addr,
-        "list_id": list_id,
-        "score": min(score, 100),
-        "reasons": reasons[:5],
-        "methods": methods,
-        "can_execute": bool(executable),
-        "recommended_method": executable[0] if executable else (methods[0] if methods else None),
-        "spam_reason": (spam_cached or {}).get("reason") or "",
-    }
-
-
-def _unsubscribe_candidate_dedupe_key(candidate: dict) -> tuple[str, str, str]:
-    list_id = str(candidate.get("list_id") or "").strip().lower()
-    method = candidate.get("recommended_method") or {}
-    method_kind = str(method.get("kind") or "").strip().lower()
-    method_target = str(method.get("target") or "").strip().lower()
-    sender = str(candidate.get("from_address") or "").strip().lower()
-    if list_id:
-        return ("list", list_id, method_target or sender)
-    if method_target:
-        return ("method", method_kind, method_target)
-    return ("sender", sender, str(candidate.get("subject") or "").strip().lower())
-
-
-def _dedupe_unsubscribe_candidates(candidates: list[dict]) -> list[dict]:
-    deduped: dict[tuple[str, str, str], dict] = {}
-    for candidate in candidates or []:
-        key = _unsubscribe_candidate_dedupe_key(candidate)
-        existing = deduped.get(key)
-        if not existing:
-            copy = dict(candidate)
-            copy["duplicate_count"] = 1
-            copy["duplicate_uids"] = [str(candidate.get("uid") or "")]
-            deduped[key] = copy
-            continue
-        existing["duplicate_count"] = int(existing.get("duplicate_count") or 1) + 1
-        uid = str(candidate.get("uid") or "")
-        if uid:
-            existing.setdefault("duplicate_uids", []).append(uid)
-        if int(candidate.get("score") or 0) > int(existing.get("score") or 0):
-            keep_count = existing.get("duplicate_count")
-            keep_uids = existing.get("duplicate_uids")
-            replacement = dict(candidate)
-            replacement["duplicate_count"] = keep_count
-            replacement["duplicate_uids"] = keep_uids
-            deduped[key] = replacement
-    return list(deduped.values())
 
 
 _FETCH_SEQ_RE = re.compile(rb"^(\d+)\s+\(")
@@ -1462,7 +1326,7 @@ def _email_imap_search_criteria(query: str) -> str:
 def _email_index_upsert(owner: str, account_id: str | None, folder: str, emails: list[dict]):
     if not emails:
         return
-    now = datetime.utcnow().isoformat() + "Z"
+    now = utcnow_naive().isoformat() + "Z"
     rows = []
     for e in emails:
         uid = str(e.get("uid") or "").strip()
@@ -1540,7 +1404,7 @@ def _email_index_update_flags(owner: str, account_id: str | None, folder: str, u
                 parts.discard(flag)
             conn.execute(
                 "UPDATE email_message_index SET flags=?, updated_at=? WHERE owner=? AND account_key=? AND folder=? AND uid=?",
-                (" ".join(sorted(parts)), datetime.utcnow().isoformat() + "Z", owner or "", _account_cache_key(account_id, owner), folder, str(uid)),
+                (" ".join(sorted(parts)), utcnow_naive().isoformat() + "Z", owner or "", _account_cache_key(account_id, owner), folder, str(uid)),
             )
             conn.commit()
         finally:
@@ -1600,7 +1464,7 @@ def _email_preview_cache_put(owner: str, account_id: str | None, folder: str, ui
     if not payload:
         return
     try:
-        now = datetime.utcnow().isoformat() + "Z"
+        now = utcnow_naive().isoformat() + "Z"
         message_id = (payload.get("message_id") or "").strip()
         stored = dict(payload)
         stored["sync"] = {"source": "preview_cache", "updated_at": now}
@@ -1690,7 +1554,7 @@ def _email_attachment_meta_cache_put(owner: str, account_id: str | None, folder:
                     str(uid),
                     (message_id or "").strip(),
                     json.dumps(attachments or [], ensure_ascii=False),
-                    datetime.utcnow().isoformat() + "Z",
+                    utcnow_naive().isoformat() + "Z",
                 ),
             )
             conn.commit()
@@ -2249,7 +2113,7 @@ def setup_email_routes():
             "emails": visible,
             "total": total,
             "folder": folder,
-            "sync": {"source": "fixture", "updated_at": datetime.utcnow().isoformat() + "Z"},
+            "sync": {"source": "fixture", "updated_at": utcnow_naive().isoformat() + "Z"},
         }
 
     def _fixture_email_read(uid: str, folder: str, owner: str) -> dict | None:
@@ -2342,14 +2206,14 @@ def setup_email_routes():
             elif filter_ == "pending_30d":
                 # "What's pending in the last month" — UNANSWERED + delivered
                 # within the last 30 days. SINCE takes a DD-Mon-YYYY date.
-                from datetime import datetime as _dt, timedelta as _td
-                _since = (_dt.utcnow() - _td(days=30)).strftime("%d-%b-%Y")
+                from datetime import timedelta as _td
+                _since = (utcnow_naive() - _td(days=30)).strftime("%d-%b-%Y")
                 status, data = _imap_uid_search(conn, f'(UNANSWERED SINCE "{_since}"{from_clause})')
             elif filter_ == "stale_30d":
                 # "What's been sitting too long" — UNANSWERED + delivered
                 # MORE than 30 days ago. BEFORE excludes the cutoff date itself.
-                from datetime import datetime as _dt, timedelta as _td
-                _before = (_dt.utcnow() - _td(days=30)).strftime("%d-%b-%Y")
+                from datetime import timedelta as _td
+                _before = (utcnow_naive() - _td(days=30)).strftime("%d-%b-%Y")
                 status, data = _imap_uid_search(conn, f'(UNANSWERED BEFORE "{_before}"{from_clause})')
             elif filter_ and filter_.startswith("tag:"):
                 # Tag-based filter — resolve UIDs from email_tags first, then
@@ -2700,7 +2564,7 @@ def setup_email_routes():
                 "sync": {
                     "source": "imap",
                     "indexed": len(cached_rows) if uid_list else 0,
-                    "updated_at": datetime.utcnow().isoformat() + "Z",
+                    "updated_at": utcnow_naive().isoformat() + "Z",
                 },
             }
         except EmailNotConfiguredError:
@@ -3369,7 +3233,7 @@ def setup_email_routes():
                         "source": "imap",
                         "sync": {
                             "source": "imap",
-                            "updated_at": datetime.utcnow().isoformat() + "Z",
+                            "updated_at": utcnow_naive().isoformat() + "Z",
                         },
                     }
 
@@ -3428,7 +3292,7 @@ def setup_email_routes():
                     "source": "imap",
                     "sync": {
                         "source": "imap",
-                        "updated_at": datetime.utcnow().isoformat() + "Z",
+                        "updated_at": utcnow_naive().isoformat() + "Z",
                     },
                 }
         except Exception as e:
@@ -4631,7 +4495,7 @@ def setup_email_routes():
                 "folders": result,
                 "sync": {
                     "source": "imap",
-                    "updated_at": datetime.utcnow().isoformat() + "Z",
+                    "updated_at": utcnow_naive().isoformat() + "Z",
                     "status": status.decode() if isinstance(status, bytes) else status,
                 },
             }
@@ -4965,7 +4829,7 @@ def setup_email_routes():
                 parsed_at = _dt.fromisoformat(send_at.replace("Z", "+00:00"))
             except ValueError:
                 return {"success": False, "error": "send_at must be ISO8601"}
-            now_utc = _dt.now(_tz.utc) if parsed_at.tzinfo else _dt.utcnow()
+            now_utc = _dt.now(_tz.utc) if parsed_at.tzinfo else utcnow_naive()
             # Tiny 30s grace so a user clicking Send right at the chosen
             # minute doesn't trip the past-time guard.
             if parsed_at < now_utc:
@@ -4997,7 +4861,7 @@ def setup_email_routes():
                 req.get("references") or None,
                 json.dumps(req.get("attachments") or []),
                 send_at,
-                datetime.utcnow().isoformat(),
+                utcnow_naive().isoformat(),
                 req.get("account_id") or None,
                 req.get("pantheon_kind") or "scheduled",
                 owner or "",
@@ -5167,7 +5031,7 @@ def setup_email_routes():
                 """UPDATE scheduled_emails
                    SET status = 'pending', send_at = ?
                    WHERE id = ? AND status = 'agent_draft' AND owner = ?""",
-                (datetime.utcnow().isoformat(), sid, owner or ""),
+                (utcnow_naive().isoformat(), sid, owner or ""),
             )
             conn.commit()
             affected = cur.rowcount
@@ -5293,7 +5157,7 @@ def setup_email_routes():
         if req.cc:
             outer["Cc"] = req.cc
         outer["Subject"] = req.subject
-        outer["Date"] = datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S +0000")
+        outer["Date"] = utcnow_naive().strftime("%a, %d %b %Y %H:%M:%S +0000")
         outer["Message-ID"] = email.utils.make_msgid(domain="pantheon.local")
 
         if req.in_reply_to:
@@ -5495,7 +5359,7 @@ def setup_email_routes():
         if req.bcc:
             msg["Bcc"] = req.bcc
         msg["Subject"] = req.subject
-        msg["Date"] = datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S +0000")
+        msg["Date"] = utcnow_naive().strftime("%a, %d %b %Y %H:%M:%S +0000")
 
         if req.in_reply_to:
             msg["In-Reply-To"] = req.in_reply_to
@@ -5734,7 +5598,7 @@ def setup_email_routes():
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         mid, owner, data.get("uid", ""), data.get("folder", ""),
-                        subject, sender, content, model, datetime.utcnow().isoformat(),
+                        subject, sender, content, model, utcnow_naive().isoformat(),
                     ))
                     _c.commit()
                     _c.close()
@@ -5867,7 +5731,7 @@ def setup_email_routes():
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         body_hash, owner, target_language, data.get("uid", ""), data.get("folder", ""),
-                        subject, sender, "", 1, model, datetime.utcnow().isoformat(),
+                        subject, sender, "", 1, model, utcnow_naive().isoformat(),
                     ))
                     _c.commit()
                     _c.close()
@@ -5885,7 +5749,7 @@ def setup_email_routes():
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     body_hash, owner, target_language, data.get("uid", ""), data.get("folder", ""),
-                    subject, sender, content, 0, model, datetime.utcnow().isoformat(),
+                    subject, sender, content, 0, model, utcnow_naive().isoformat(),
                 ))
                 _c.commit()
                 _c.close()
@@ -6194,7 +6058,7 @@ def setup_email_routes():
                         INSERT OR REPLACE INTO email_ai_replies
                         (message_id, owner, uid, folder, reply, model_used, created_at)
                         VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """, (message_id, owner, source_uid, source_folder, reply, model, datetime.utcnow().isoformat()))
+                    """, (message_id, owner, source_uid, source_folder, reply, model, utcnow_naive().isoformat()))
                     _c.commit()
                     _c.close()
                 except Exception as e:

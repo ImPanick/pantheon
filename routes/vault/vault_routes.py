@@ -12,13 +12,13 @@ import os
 import shutil
 import asyncio
 from pathlib import Path
-from datetime import datetime
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from core.middleware import require_admin
 from core.platform_compat import IS_WINDOWS, safe_chmod, which_tool
 from src.constants import VAULT_FILE as _VAULT_FILE
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 logger = logging.getLogger(__name__)
 
@@ -177,7 +177,7 @@ def setup_vault_routes():
         # bw login --raw prints session key on success (when 2FA disabled)
         if stdout:
             cfg["session"] = stdout
-            cfg["unlocked_at"] = datetime.utcnow().isoformat()
+            cfg["unlocked_at"] = utcnow_naive().isoformat()
             _save_config(cfg)
         return {"ok": True}
 
@@ -199,7 +199,7 @@ def setup_vault_routes():
             return {"ok": False, "error": "bw returned empty session"}
         cfg = _load_config()
         cfg["session"] = session
-        cfg["unlocked_at"] = datetime.utcnow().isoformat()
+        cfg["unlocked_at"] = utcnow_naive().isoformat()
         _save_config(cfg)
         return {"ok": True, "message": "Vault unlocked"}
 

@@ -371,6 +371,33 @@ class VectorRAG:
     # ------------------------------------------------------------------
 
     def search(self, query: str, k: int = 5, owner: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Hybrid search, recorded as a `retrieval` event (`P14-02`).
+
+        `B2152`. The event lived in `src/rag_manager.RAGManager.search`, a
+        wrapper nothing in the running product built (`rag_singleton` hands out
+        this class), so the document index's hit rate was never recorded and
+        `/metrics` and a run's receipt counted memory retrievals alone. It is
+        recorded here, where every search runs; `unavailable` is told apart
+        from `empty` as `memory_vector` does."""
+        import time as _t
+        t0 = _t.monotonic()
+        results = self._search(query, k, owner=owner)
+        try:
+            # Asked only of an empty answer, so a search that found something
+            # costs no second `count()` against the store.
+            unavailable = not self.healthy or (
+                not results and lane_count(getattr(self, "_lanes", None) or []) == 0)
+            from src.events import record_event
+            record_event("retrieval", name="rag", owner=owner,
+                         outcome=("unavailable" if unavailable
+                                  else "ok" if results else "empty"),
+                         duration_ms=int((_t.monotonic() - t0) * 1000),
+                         detail={"asked": k, "returned": len(results or [])})
+        except Exception:  # noqa: BLE001 — a search never fails over its receipt
+            pass
+        return results
+
+    def _search(self, query: str, k: int = 5, owner: Optional[str] = None) -> List[Dict[str, Any]]:
         if not self.healthy:
             return []
         if not query or not isinstance(query, str):

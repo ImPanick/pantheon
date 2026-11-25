@@ -45,13 +45,12 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from core.database import SessionLocal
-from src.auth_helpers import get_current_user, request_is_a_person
+from src.auth_helpers import get_current_user, only_a_person_can, request_is_a_person
 
 BODY_MAX_BYTES = 64 * 1024
 # `P27-10`: an export file is read whole, so its door takes more.
 IMPORT_MAX_BYTES = 17 * 1024 * 1024
-ONLY_A_PERSON = ("Only a person signed in to Pantheon can change, reveal or unlock their vault — "
-                 "not an API token or the assistant.")
+ONLY_A_PERSON = only_a_person_can("change, reveal or unlock their vault")  # `B2174`
 WRONG_PASSWORD = "That is not your Pantheon password. Nothing was shown."
 
 

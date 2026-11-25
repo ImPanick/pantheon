@@ -3,7 +3,6 @@
 """Model A/B comparison routes."""
 import json
 import uuid
-from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, model_validator
@@ -12,6 +11,7 @@ import logging
 from core.database import Comparison, SessionLocal
 from core.session_manager import SessionManager
 from src.auth_helpers import get_current_user
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 logger = logging.getLogger(__name__)
 
@@ -194,7 +194,7 @@ def setup_compare_routes(session_manager: SessionManager):
                 winner=body.winner,
                 is_blind=body.is_blind,
                 vote_meta=vote_meta,
-                voted_at=datetime.utcnow(),
+                voted_at=utcnow_naive(),
                 owner=user,
             )
             db.add(comp)

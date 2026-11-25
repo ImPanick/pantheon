@@ -7,7 +7,6 @@ import os
 import re
 import time
 import logging
-from datetime import datetime
 from typing import Callable, Dict, Any, AsyncGenerator, List, Optional, Union
 
 from fastapi import APIRouter, Request, HTTPException, Query, Depends
@@ -78,6 +77,7 @@ from core.log_safety import redact_url
 from routes.research_routes import _resolve_research_endpoint
 from routes.model_routes import _visible_models
 from src.env_flags import request_flag
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 def _mark_turn_start() -> None:
     """Start the turn clock (`P14-02`). Guarded: instrumentation must never be
     the reason a chat request fails to start."""
@@ -1188,7 +1188,7 @@ def _clear_orphaned_session_endpoint(sess, owner: str | None = None) -> bool:
         if db_session:
             db_session.endpoint_url = ""
             db_session.model = ""
-            db_session.updated_at = datetime.utcnow()
+            db_session.updated_at = utcnow_naive()
             db.commit()
         sess.endpoint_url = ""
         sess.model = ""
@@ -1453,7 +1453,7 @@ def _recover_empty_session_model(sess, session_id: str, owner: str | None = None
         db_session = db_session_q.first()
         if db_session:
             db_session.model = model
-            db_session.updated_at = datetime.utcnow()
+            db_session.updated_at = utcnow_naive()
             db.commit()
         sess.model = model
         logger.info(
@@ -1562,7 +1562,7 @@ def _reconcile_selected_route_from_request(
             db_session.model = selected_model
             db_session.endpoint_url = endpoint_url
             db_session.headers = sess.headers or {}
-            db_session.updated_at = datetime.utcnow()
+            db_session.updated_at = utcnow_naive()
             db.commit()
     finally:
         db.close()
@@ -2054,15 +2054,9 @@ def setup_chat_routes(
         active_email_uid = form_data.get("active_email_uid", "").strip()
         active_email_folder = form_data.get("active_email_folder", "INBOX").strip() or "INBOX"
         active_email_account = form_data.get("active_email_account", "").strip()
+        # `B2153`. Per request, never process-wide: this dict is the one copy
+        # the agent reads (`active_email=` below).
         active_email_ctx: Optional[Dict[str, str]] = None
-        # Always reset between requests so a stale active-email pointer from
-        # a previous turn (different reader closed, different account, etc.)
-        # can't leak in when the user has no email open this turn.
-        try:
-            from src.tool_implementations import clear_active_email
-            clear_active_email()
-        except Exception:
-            pass
         if active_email_uid:
             active_email_ctx = {
                 "uid": active_email_uid,
@@ -2089,18 +2083,6 @@ def setup_chat_routes(
                         active_email_ctx["body_preview"] = _body_preview
             except Exception as _e:
                 logger.debug(f"[email-inject] cache enrich skipped: {_e}")
-            # Stash so email tools can resolve "this email" without UID guessing.
-            try:
-                from src.tool_implementations import set_active_email
-                set_active_email(
-                    uid=active_email_uid,
-                    folder=active_email_folder,
-                    account=active_email_account or None,
-                    subject=active_email_ctx.get("subject"),
-                    sender=active_email_ctx.get("from"),
-                )
-            except Exception as _e:
-                logger.debug(f"[email-inject] set_active_email failed: {_e}")
             logger.info(
                 "[email-inject] active_email uid=%s folder=%s account=%s subject=%r",
                 active_email_uid, active_email_folder, active_email_account or "(default)",

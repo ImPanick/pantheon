@@ -27,6 +27,7 @@ from src.rate_limiter import parse_reset_header as _reset_after
 from src import reasoning_effort as _reasoning_effort
 from src import openai_responses as _openai_responses
 from src import prompt_cache as _prompt_cache
+from src.local_hosts import LOCAL_SERVER_NAMES
 
 # Longest server-requested wait we will sit through inside a retry loop. Beyond
 # this, honouring the header by sleeping would hold a user's request open for
@@ -706,7 +707,7 @@ def _is_ollama_native_url(url: str) -> bool:
         return True
     if path.startswith("/v1"):
         return False
-    local_ollama_host = host in {"localhost", "127.0.0.1", "0.0.0.0", "::1"} or parsed.port == 11434
+    local_ollama_host = host in LOCAL_SERVER_NAMES or parsed.port == 11434
     return local_ollama_host and (path == "" or path == "/api" or path.startswith("/api/"))
 
 
@@ -733,7 +734,7 @@ def _is_ollama_openai_compat_url(url: str) -> bool:
         return False
     host = parsed.hostname or ""
     path = (parsed.path or "").rstrip("/")
-    local_ollama_host = host in {"localhost", "127.0.0.1", "0.0.0.0", "::1"} or parsed.port == 11434
+    local_ollama_host = host in LOCAL_SERVER_NAMES or parsed.port == 11434
     return local_ollama_host and (path == "/v1" or path.startswith("/v1/"))
 
 
@@ -1406,7 +1407,7 @@ def _provider_label(url: str) -> str:
         port = _parsed_local.port
     except Exception:
         return "provider"
-    if host in {"localhost", "127.0.0.1", "::1", "0.0.0.0"}:
+    if host in LOCAL_SERVER_NAMES:
         # A port alone is not authoritative: vLLM, SGLang, llama.cpp and plain
         # OpenAI-compatible servers all routinely share 8000/8080, so naming the
         # serving tool from the port here would mislabel real setups. The tool is

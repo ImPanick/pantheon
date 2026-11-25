@@ -8,6 +8,7 @@ import os
 import threading
 import time
 from typing import Any, Dict, List
+from src.local_hosts import OPERATOR_SERVICE_NAMES, OPERATOR_SERVICE_SUFFIXES
 
 logger = logging.getLogger(__name__)
 
@@ -216,14 +217,9 @@ _AUTHENTICATED_FLOOR = 0.2
 # politeness, not the response handling.
 LOCAL_POLICY = HostPolicy(min_interval=0.0, max_concurrent=32, jitter=0.0, max_wait=30.0)
 
-_LOCAL_NAMES = frozenset({
-    "localhost", "host.docker.internal", "gateway.docker.internal",
-    # compose service names — inside the network Pantheon ships with
-    "pantheon", "searxng", "chromadb", "chroma", "ntfy", "ollama",
-    # `B1226`: and the workstation's, which were paced as a stranger's.
-    "workstation", "workstation-net", "workstation-vm",
-})
-_LOCAL_SUFFIXES = (".local", ".lan", ".internal", ".localdomain", ".home.arpa")
+# `B2177`: the names live in `src/local_hosts.py`, named for what they mean.
+_LOCAL_NAMES = OPERATOR_SERVICE_NAMES
+_LOCAL_SUFFIXES = OPERATOR_SERVICE_SUFFIXES
 
 
 def host_is_local(host: str) -> bool:

@@ -46,10 +46,10 @@ import logging
 import os
 import re
 import uuid
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from src import vault as V
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 logger = logging.getLogger(__name__)
 
@@ -411,7 +411,7 @@ def export(db, owner: Optional[str], passphrase: Any) -> Dict[str, Any]:
     items = [_as_bitwarden(r, V._open(f, r.sealed)) for r in rows] if f else []
     plain = json.dumps({"encrypted": False, "folders": [], "items": items}, separators=(",", ":")).encode()
     salt, nonce = os.urandom(16), os.urandom(12)
-    env: Dict[str, Any] = {FORMAT: FORMAT_VERSION, "made": datetime.utcnow().strftime("%Y-%m-%d"),
+    env: Dict[str, Any] = {FORMAT: FORMAT_VERSION, "made": utcnow_naive().strftime("%Y-%m-%d"),
                            "items": len(items),
                            "kdf": {"name": "scrypt", "n": SCRYPT_N, "r": SCRYPT_R, "p": SCRYPT_P, "salt": _b64(salt)},
                            "cipher": "AES-256-GCM"}

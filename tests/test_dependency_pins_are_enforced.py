@@ -256,9 +256,11 @@ def test_this_repositorys_requirements_files_are_all_covered():
     # holds them to the same exact pins).
     assert checker._dependabot_pip_directories() == ["/", "/voice/chatterbox"]
     # `B1716`/`B1717`: requirements-voice.txt is the image's speech set.
+    # `B2192`: requirements-dev.txt is the test runner CI installs and the
+    # image does not, held to the same exact pins.
     assert {p.name for p in checker.requirement_files()} == {
         "requirements.txt", "requirements-optional.txt", "requirements-image.txt",
-        "requirements-voice.txt"}
+        "requirements-voice.txt", "requirements-dev.txt"}
 
 
 # --- The network half: partitioning a pip-audit report -----------------------

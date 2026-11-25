@@ -29,7 +29,7 @@ import os
 import sys
 import tempfile
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List
 
 #: The key a root function's answer is read from (the paper's natural-language
 #: keys, held to one so a run's reply is never guessed from the dict's shape).

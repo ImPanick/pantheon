@@ -41,8 +41,19 @@ def test_the_tree_holds(contract):
     assert contract.rule_suite_runs_where_the_image_runs() == []
 
 
+THE_OLD_TREE = {"ci.yml:python-tests": "3.11", "ci.yml:law16-egress": "3.11"}
+A_REASON = {job: ("3.11", "3.14", "B438: planted") for job in THE_OLD_TREE}
+
+
+def test_the_suite_runs_on_the_images_python_with_nothing_excused(contract):
+    """`B2192`. The suite moved to 3.14 and the excuses went with it."""
+    assert contract.SUITE_ON_ANOTHER_PYTHON == {}
+    assert set(contract.suite_jobs().values()) == {contract.image_python()}
+
+
 def test_a_suite_on_another_python_with_no_reason_fails(contract, monkeypatch):
     """The tree before `B438`: 3.11 against 3.14, and nothing said why."""
+    monkeypatch.setattr(contract, "suite_jobs", lambda: dict(THE_OLD_TREE))
     monkeypatch.setattr(contract, "SUITE_ON_ANOTHER_PYTHON", {})
     problems = contract.rule_suite_runs_where_the_image_runs()
     assert len(problems) == 2
@@ -50,12 +61,15 @@ def test_a_suite_on_another_python_with_no_reason_fails(contract, monkeypatch):
 
 
 def test_bumping_the_image_makes_the_reason_stale(contract, monkeypatch):
+    monkeypatch.setattr(contract, "suite_jobs", lambda: dict(THE_OLD_TREE))
+    monkeypatch.setattr(contract, "SUITE_ON_ANOTHER_PYTHON", dict(A_REASON))
     monkeypatch.setattr(contract, "image_python", lambda: "3.15")
     problems = contract.rule_suite_runs_where_the_image_runs()
     assert problems and all("re-measure" in p for p in problems)
 
 
 def test_a_suite_that_moved_takes_its_excuse_with_it(contract, monkeypatch):
+    monkeypatch.setattr(contract, "SUITE_ON_ANOTHER_PYTHON", dict(A_REASON))
     monkeypatch.setattr(contract, "suite_jobs",
                         lambda: {"ci.yml:python-tests": "3.14", "ci.yml:law16-egress": "3.14"})
     problems = contract.rule_suite_runs_where_the_image_runs()

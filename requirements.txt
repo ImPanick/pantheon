@@ -40,19 +40,29 @@
 # beside the pin. They are the reason the pin may not move past a boundary, and
 # deleting them would lose that reason.
 
-fastapi==0.141.1
+fastapi==0.165.0
+# `B2191`. Imported directly (`app.py`, `core/middleware.py`, `src/`,
+# `routes/`: middleware, responses, the static mounts, the test client) and
+# until now pinned only through FastAPI, which floats it: FastAPI 0.165
+# needs >=1.6, and a FastAPI bump could move it a major with no line here
+# changing. Pinned beside FastAPI so the two move in one reviewed diff.
+starlette==1.10.0
+# `B2191`. Imported directly (`src/event_bus.py`, `routes/workspace_routes.py`
+# hand work back to the event loop with `anyio.from_thread`); Starlette and
+# httpx bring it, which is not a promise this tree may lean on.
+anyio==4.16.0
 uvicorn==0.54.0
 # `D-2026-10-31-01`. The live desktop is a WebSocket both ways: Uvicorn serves
 # the browser's end with it (plain `uvicorn`, not `uvicorn[standard]`, brings no
 # WebSocket library, and refuses every upgrade without one), and
 # `src/workstation_client.py` opens the workstation's end with its client.
-# 17.2 (2026-10-03) rather than the newest, a release from the day before this
-# was pinned; it supports Python 3.11 onward, as CI and the image run.
-websockets==17.2
+# The newest release (`B2190`); it supports Python 3.11 onward, the floor a
+# host may still run, and CI and the image run 3.14.
+websockets==17.4
 # Not imported: FastAPI imports it (as `python_multipart`) to parse every
 # `Form`/`File` body, and refuses to register an upload route without it.
-python-multipart==0.0.32
-python-dotenv==1.2.3
+python-multipart==0.0.34
+python-dotenv==1.2.4
 httpx==0.28.1
 # Range before pinning: >=1.0,<2.0. httpcore 2.x is a breaking rewrite of the
 # transport layer httpx sits on; do not move this pin to 2.x without moving
@@ -68,24 +78,37 @@ httpcore==1.0.9
 # since the launchers reinstall only when this file changes and never upgrade.
 # Floor before pinning: >=2026.10.19 (upstream #6785), raised to >=2026.10.23
 # (#6791). Do not pin below 2026.10.19.
-certifi==2026.10.23
+certifi==2026.11.20
 # Floor before pinning: >=2.13.4 (pydantic) and >=2.14.1 (pydantic-settings).
 # Do not pin below those.
-pydantic==2.13.5
+pydantic==2.14.4
 # Not imported: `chromadb-client` (>=2.0) requires it — and `mcp` (>=2.5.2)
 # did until 2.x (`B621`). The product's own `BaseSettings` went with `B550`;
 # the pin stays so the image resolves the version this tree is tested with
 # (`B1548`).
-pydantic-settings==2.15.0
-SQLAlchemy==2.1.1
+pydantic-settings==2.16.3
+SQLAlchemy==2.1.9
 # `B1743`. 6.19.0 carries eighteen advisories (crafted PDFs that loop forever
 # in the xref, trailer, outline and object-cloning readers), each reachable
 # from an attached document; 6.21.4 (2026-10-28) is the first release with
 # none of them.
-pypdf==6.21.4
+pypdf==7.1.1
 beautifulsoup4==4.15.0
+# `B2197`: held at 3.5.1 although 3.5.3 is out. From 3.5.2 the detector ranks
+# a Japanese codec (euc_jis_2004) for a GB2312 line of Chinese that quotes
+# Japanese, and `B1596`'s rule in `src/document_processor.py` takes it, so
+# "ありがとうございます是日语里谢谢的意思" arrives as "…頁晩囂戦仍仍議吭房"
+# (`tests/test_encoding_guess_reads_its_own_output.py` fails on 3.5.2 and
+# 3.5.3; 3.5.3 also stops refusing the 11-byte cp1251 sample six tests in
+# `tests/test_short_sample_encoding_guess.py` are built on). Move it with the
+# rule fix `B2197` describes, not before.
 charset-normalizer==3.5.1
-numpy==2.4.6
+# `B2190`. numpy 2.5 requires Python 3.12, and Pantheon still installs on a
+# 3.11 host (the launchers, `docs/setup.md`, ruff's `target-version`): that
+# host keeps 2.4.6, the newest release that installs there, and everything
+# else (CI and the image, both 3.14) takes the newest.
+numpy==2.5.5; python_version >= "3.12"
+numpy==2.4.6; python_version < "3.12"
 # Vector store + local embeddings for RAG, semantic memory, and tool
 # selection. Used on core agent paths, so installed by default — the app
 # still degrades to keyword fallback if they're ever missing.
@@ -97,30 +120,45 @@ chromadb-client==1.5.9
 # PNG, GIF, TIFF, JPEG, BMP, PDF, EPS), every one reachable from an uploaded
 # picture. 0.9.1 (2026-10-24) raises the cap to 14.0, so it moves with Pillow.
 fastembed==0.9.1
+# `B2191`. Imported directly (`services/tts/tts_service.py` fetches the voice
+# models with it; `docker/bake_piper_voice.py` bakes them). fastembed 0.9.1 and
+# faster-whisper bring it and fastembed holds it below 2.0, so this is the
+# newest 1.x (2.4.0 is out): move it with a fastembed release that allows 2.
+huggingface-hub==1.33.0
 # `B1743`. Imported directly (uploads, gallery, screen marks, tool-result
 # pictures) and until now pinned only through fastembed. 13.0.0 (2026-10-16)
 # is the first release with none of the fifty-seven advisories pip-audit
 # reports against 12.3.0; it needs Python 3.11, which CI and the image have.
 pillow==13.0.0
-youtube-transcript-api==1.2.4
+youtube-transcript-api==1.2.5
 # Markdown rendering for research reports (src/visual_report.py).
 # Imported at module-top so it's a hard core dep, not optional.
-markdown==3.11
+markdown==3.11.3
 # HTML sanitizer for rendered research reports (src/visual_report.py). Report
 # content is untrusted (LLM output over crawled pages) and report pages run
 # under a relaxed CSP, so the rendered HTML is allowlist-sanitized.
-nh3==0.3.7
+nh3==0.3.8
 # Calendar .ics import/export (routes/calendar_routes.py).
-icalendar==7.3.0
+icalendar==7.3.2
 # Recurrence rule expansion for calendar events (routes/calendar_routes.py).
 # Imported directly as dateutil.rrule — make it explicit even though caldav
 # pulls it in transitively.
+# `B2190`: held at 2.9.0.post0 although 4.0.0 is out. caldav reaches
+# recurring-ical-events (through icalendar-searcher), and its newest release,
+# 3.8.2, declares `python-dateutil<3.0.0`; with 4.0.0 pinned here pip cannot
+# resolve the file at all, which is the one reason Dependabot's #93 was red.
+# Move it when recurring-ical-events lifts that ceiling, not before.
 python-dateutil==2.9.0.post0
 # CalDAV sync (src/caldav_sync.py). Handles PROPFIND discovery + REPORT
 # fetch across Radicale, Nextcloud, Apple, Fastmail; we'd be reinventing
 # the protocol without it.
-caldav==3.3.1
-cryptography==50.0.1
+caldav==3.7.0
+# `B2191`. Imported directly (`routes/contacts/contacts_routes.py` parses a
+# CardDAV server's XML answer with it, never with the standard library's
+# parser, which expands entities). Only youtube-transcript-api brought it, so
+# a release of that package that dropped it would have broken contact sync.
+defusedxml==0.7.1
+cryptography==50.0.2
 bcrypt==5.0.0
 # MCP SDK. A major version of it is a migration, not a bump: Dependabot ignores
 # semver-major for `mcp` (`.github/dependabot.yml`), and
@@ -147,19 +185,19 @@ bcrypt==5.0.0
 # failed 81 tests and errored 19 on 2.3.0 (7 files would not collect), where
 # 1.30.0 passed all of them; after it, those files and five more pass on 2.3.0.
 mcp==2.3.0
-pyotp==2.10.0
+# `B2191`. Imported directly (`src/mcp_tool_server.py` validates a tool call's
+# arguments against the tool's input schema before the tool runs); the MCP
+# SDK and chromadb-client bring it today.
+jsonschema==4.26.0
+pyotp==2.12.1
 qrcode[pil]==8.2
-croniter==6.2.4
-pytest==9.1.1
-# Not imported: pytest loads it by entry point as a plugin; `asyncio_mode =
-# "auto"` in pyproject.toml is the setting it reads.
-pytest-asyncio==1.4.0
+croniter==7.0.0
 # The MCP SDK's HTTP transports run on httpx2 since mcp 2.x, and
 # `src/mcp_manager.py` builds the client a streamable-HTTP MCP session runs on
 # (`B621`); everything else at runtime uses `httpx` above. starlette.testclient
 # prefers it too, since Starlette 1.2.0, and warns on every TestClient import
 # when only classic httpx is present.
-httpx2==2.13.1
+httpx2==2.16.2
 # DATABASE_URL defaults to sqlite (core/database.py), but when pointed at an
 # external Postgres, SQLAlchemy's postgresql dialect imports psycopg2 inside
 # create_engine() and raises ModuleNotFoundError if missing. -binary avoids

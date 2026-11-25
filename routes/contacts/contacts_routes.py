@@ -17,7 +17,6 @@ import inspect
 import httpx
 from src import paced_http  # `B1022`
 from pathlib import Path
-from datetime import datetime
 from urllib.parse import urljoin, urlparse, urlunparse
 
 from core.log_safety import redact_url
@@ -27,6 +26,7 @@ from typing import List, Dict, Optional
 from core.middleware import require_admin
 from src.url_safety import check_outbound_url
 from src.env_flags import env_flag
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +180,7 @@ def _save_local_contacts(contacts: List[Dict]) -> None:
         indent=2, preserve_unreadable=True,
     )
     _contact_cache["contacts"] = [_normalize_contact(c) for c in contacts]
-    _contact_cache["fetched_at"] = datetime.utcnow()
+    _contact_cache["fetched_at"] = utcnow_naive()
 
 
 # ── vCard parsing ──
@@ -420,7 +420,7 @@ def _fetch_contacts(force=False, report: Optional[dict] = None):
     if report is not None:
         report.update(unread=None, stale=False)
     if not force and _contact_cache["fetched_at"]:
-        age = (datetime.utcnow() - _contact_cache["fetched_at"]).total_seconds()
+        age = (utcnow_naive() - _contact_cache["fetched_at"]).total_seconds()
         if age < 60:
             return _contact_cache["contacts"]
 
@@ -428,7 +428,7 @@ def _fetch_contacts(force=False, report: Optional[dict] = None):
     if not _carddav_configured(cfg):
         contacts = _load_local_contacts()
         _contact_cache["contacts"] = contacts
-        _contact_cache["fetched_at"] = datetime.utcnow()
+        _contact_cache["fetched_at"] = utcnow_naive()
         return contacts
 
     def _unread(why):
@@ -458,7 +458,7 @@ def _fetch_contacts(force=False, report: Optional[dict] = None):
                 return _unread(f"the CardDAV server answered HTTP {r.status_code}")
             contacts = _parse_vcards(r.text)
         _contact_cache["contacts"] = contacts
-        _contact_cache["fetched_at"] = datetime.utcnow()
+        _contact_cache["fetched_at"] = utcnow_naive()
         return contacts
     except Exception as e:
         logger.error(f"Failed to fetch contacts: {e}")

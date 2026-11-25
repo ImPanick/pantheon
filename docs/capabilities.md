@@ -153,7 +153,7 @@ Each person gets a Linux desktop of their own for the agent to work in, kept bet
 - **What's in it:** XFCE, a shell, Python, files, Firefox (locked down by policy), sudo by default,
   and a projects folder shared with Pantheon. Streamed live over KasmVNC: watch the agent, take
   over, hand it back, or reset to a starting point you saved.
-- **Distros:** Ubuntu 24.04 by default, and Debian 13, Fedora 44 or Rocky Linux 9 where the operator
+- **Distros:** Ubuntu 24.04 by default, and Debian 13, Fedora 45 or Rocky Linux 9 where the operator
   has enabled them. Each person picks their own.
 - **Backends:**
 

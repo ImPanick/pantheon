@@ -4,6 +4,7 @@ import os
 import re
 import logging
 import sqlite3
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -24,9 +25,10 @@ logger = logging.getLogger(__name__)
 Base = declarative_base()
 
 
-def utcnow_naive() -> datetime:
-    """Return naive UTC for existing DateTime columns."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+# `B2173`. The one definition is `src/utc_clock.py`, so a module that must not
+# import this one (SQLAlchemy and the engine) has the same clock; re-exported
+# here for its many importers.
+from src.utc_clock import utcnow_naive  # noqa: E402,F401
 
 
 class TimestampMixin:
@@ -120,6 +122,8 @@ def _sqlite_db_path(url) -> Optional[str]:
     if (
         db_path.lower().startswith("file::memory:")
         or query.get("mode") == "memory"
+        # `B2195`: SQLite's in-memory VFS, which `_engine_target` names
+        or query.get("vfs") == "memdb"
     ):
         return None
 
@@ -136,7 +140,8 @@ def _sqlite_db_path(url) -> Optional[str]:
 
 
 def _pool_for(url: str) -> dict:
-    """`StaticPool` for a SQLite database that lives only in memory.
+    """`StaticPool` for a SQLite database that lives only in memory, when it
+    cannot be given a connection per thread (`_engine_target`).
 
     `B1410`/`B1491`/`B1085`. An in-memory SQLite database belongs to the ONE
     connection that opened it, and SQLAlchemy's default pool for one is
@@ -157,8 +162,52 @@ def _pool_for(url: str) -> dict:
     One connection for the process is SQLAlchemy's own answer for this case,
     so `:memory:` is one database for every thread, and nothing closes it. A
     file-backed URL, and anything that is not SQLite, keeps its default pool.
+
+    `B2195`: one connection is still one connection, and on Python 3.13 and
+    3.14 eight threads reading the schema through it at once interleave on its
+    cursor and raise `IndexError` inside SQLAlchemy's row (3.11 happened to
+    pass). Where SQLite can share a named in-memory database between
+    connections, `_engine_target` does that instead and this pool is not used.
     """
     return {"poolclass": StaticPool} if _in_memory_sqlite(url) else {}
+
+
+# `B2195`. SQLite's `memdb` VFS shares an in-memory database between every
+# connection in the process that opens it by the same name starting with `/`
+# (SQLite 3.36), with ordinary locking, so the busy wait below applies, unlike
+# `cache=shared`, which SQLite discourages and which answers a lock with
+# SQLITE_LOCKED at once. The database lives while one connection is open, so
+# `_MEMORY_ANCHOR` holds one for the life of the process.
+_MEMDB_SINCE = (3, 36, 0)
+_MEMORY_ANCHOR = None
+
+
+def _private_memory_sqlite(url: str) -> bool:
+    """`:memory:`, `sqlite://` or `file::memory:` — an in-memory database
+    nobody named, so nothing else can expect to reach it by its URL."""
+    try:
+        parsed = make_url(url)
+    except Exception:
+        return False
+    if parsed.get_backend_name() != "sqlite" or _sqlite_db_path(parsed) is not None:
+        return False
+    db_path = str(parsed.database or "")
+    return db_path in ("", ":memory:") or db_path.lower().startswith("file::memory:")
+
+
+def _engine_target(url: str, sqlite_version=None) -> tuple[str, dict]:
+    """`(url, pool arguments)` for `create_engine`.
+
+    A private in-memory SQLite database becomes a named `memdb` one with
+    SQLAlchemy's default pool, so each thread works on a connection of its
+    own and all of them see one database. Older SQLite keeps the one shared
+    connection (`_pool_for`). Every other URL is returned as it came.
+    """
+    version = sqlite_version or sqlite3.sqlite_version_info
+    if _private_memory_sqlite(url) and tuple(version) >= _MEMDB_SINCE:
+        name = f"pantheon-memory-{os.getpid()}-{uuid.uuid4().hex}"
+        return f"sqlite:///file:/{name}?vfs=memdb&uri=true", {}
+    return url, _pool_for(url)
 
 
 def _in_memory_sqlite(url: str) -> bool:
@@ -173,11 +222,15 @@ def _in_memory_sqlite(url: str) -> bool:
 
 
 # Create engine
+_ENGINE_URL, _ENGINE_POOL = _engine_target(DATABASE_URL)
 engine = create_engine(
-    DATABASE_URL,
+    _ENGINE_URL,
     connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {},
-    **_pool_for(DATABASE_URL),
+    **_ENGINE_POOL,
 )
+if _ENGINE_URL != DATABASE_URL:
+    # `B2195`: the named in-memory database lives as long as this connection.
+    _MEMORY_ANCHOR = engine.raw_connection()
 
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -1075,10 +1128,11 @@ class Comparison(TimestampMixin, Base):
     model_b = Column(String, nullable=False)
     endpoint_a = Column(String, nullable=False)
     endpoint_b = Column(String, nullable=False)
-    response_a = Column(Text, nullable=True)
-    response_b = Column(Text, nullable=True)
     # (`B1480`, `B641`: `metrics_a` / `metrics_b` were declared here and never
-    # written or read; an install that has them keeps them, unused.)
+    # written or read; an install that has them keeps them, unused. `B2155`:
+    # `response_a` / `response_b` likewise — the Compare window keeps its
+    # replies in the browser and `/record` stores the vote — and an install
+    # that has them keeps them too, nullable and unread.)
     winner = Column(String, nullable=True)           # "a", "b", "tie", or null
     is_blind = Column(Boolean, default=True)
     # `P13-12`. This column now holds ONE thing again: which side of the blind

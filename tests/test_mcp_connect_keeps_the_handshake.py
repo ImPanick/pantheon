@@ -49,6 +49,7 @@ from mcp.types import (  # noqa: E402
 )
 
 from src.mcp_manager import McpManager, mcp_tool_is_readonly  # noqa: E402
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 TRANSPORTS = ("stdio", "sse", "http")
 
@@ -281,12 +282,11 @@ def test_the_handshake_is_gone_when_the_server_is(connect):
 
 def _server_row(Factory, server_id="srv"):
     from core.database import McpServer
-    from datetime import datetime
 
     db = Factory()
     db.add(McpServer(id=server_id, name="Files", transport="stdio", command="npx",
                      args="[]", env="{}", is_enabled=True,
-                     created_at=datetime.utcnow(), updated_at=datetime.utcnow()))
+                     created_at=utcnow_naive(), updated_at=utcnow_naive()))
     db.commit()
     db.close()
 

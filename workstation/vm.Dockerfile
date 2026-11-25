@@ -13,7 +13,7 @@
 #
 # `B1677`. The same base as `Dockerfile`, by the same content address, and why
 # is written there.
-FROM ubuntu:noble-20261024.1@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852
+FROM ubuntu:noble-20261110.1@sha256:562111b88caa79c71391c0c4d3c2114a7d5c35915c20561fd893cb1e07929e6b
 
 ARG DEBIAN_FRONTEND=noninteractive
 # The same two optional knobs as `Dockerfile`, for a builder that cannot reach

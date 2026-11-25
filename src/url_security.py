@@ -6,13 +6,10 @@ from __future__ import annotations
 import ipaddress
 import socket
 from urllib.parse import urlparse
+from src.local_hosts import NEVER_FETCHED_NAMES
 
 
-_INTERNAL_HOSTNAMES = {
-    "localhost",
-    "metadata",
-    "metadata.google.internal",
-}
+_INTERNAL_HOSTNAMES = NEVER_FETCHED_NAMES
 
 _INTERNAL_SUFFIXES = (
     ".localhost",

@@ -111,3 +111,88 @@ def test_only_a_database_in_memory_shares_one_connection():
     for url in ("sqlite:////var/lib/pantheon/app.db",
                 "postgresql://u:p@db.local/pantheon"):
         assert cdb._pool_for(url) == {}, url
+
+
+# ── `B2195`: a connection per thread, onto one named database ────────────────
+#
+# One shared connection was still one connection: on Python 3.13 and 3.14 the
+# crash case above died with `IndexError: tuple index out of range` inside
+# SQLAlchemy's row, eight threads interleaving on its cursor (3.11 passed). An
+# in-memory database nobody named is now SQLite's `memdb` one under a name of
+# the process's own, which every connection opening that name shares.
+
+
+def test_a_private_in_memory_url_becomes_one_named_memdb_database():
+    import core.database as cdb
+
+    for url in ("sqlite:///:memory:", "sqlite://", "sqlite:///file::memory:?uri=true"):
+        target, pool = cdb._engine_target(url, sqlite_version=(3, 45, 1))
+        assert target.startswith("sqlite:///file:/pantheon-memory-"), target
+        assert target.endswith("?vfs=memdb&uri=true") and pool == {}, (target, pool)
+        assert cdb._sqlite_db_path(cdb.make_url(target)) is None, (
+            "a memdb database is not a file, so nothing may chmod or journal it")
+        assert cdb._in_memory_sqlite(target), "a child process cannot share it either"
+
+
+def test_older_sqlite_and_named_or_file_urls_keep_what_they_had():
+    from sqlalchemy.pool import StaticPool
+    import core.database as cdb
+
+    assert cdb._engine_target("sqlite:///:memory:", sqlite_version=(3, 35, 5)) == (
+        "sqlite:///:memory:", {"poolclass": StaticPool})
+    named = "sqlite:///file:scratch?mode=memory&uri=true"
+    assert cdb._engine_target(named, sqlite_version=(3, 45, 1)) == (
+        named, {"poolclass": StaticPool})
+    for url in ("sqlite:////var/lib/pantheon/app.db", "postgresql://u:p@db.local/pantheon"):
+        assert cdb._engine_target(url, sqlite_version=(3, 45, 1)) == (url, {}), url
+
+
+def test_the_suites_engine_gives_each_thread_its_own_connection():
+    import sqlite3
+    import core.database as cdb
+
+    if sqlite3.sqlite_version_info < cdb._MEMDB_SINCE:  # pragma: no cover
+        return
+    assert "vfs=memdb" in str(cdb.engine.url), cdb.engine.url
+    assert cdb._MEMORY_ANCHOR is not None, "nothing keeps the database alive"
+    seen = {}
+
+    def ask():
+        with cdb.engine.connect() as conn:
+            seen["worker"] = id(conn.connection.dbapi_connection)
+
+    with cdb.engine.connect() as conn:
+        mine = id(conn.connection.dbapi_connection)
+        worker = threading.Thread(target=ask)
+        worker.start()
+        worker.join()
+    assert seen["worker"] != mine
+
+
+def test_threads_writing_at_once_all_land_in_one_database():
+    """Readers were the reported crash; writers share the same connection, and
+    on the named database they queue on SQLite's lock instead."""
+    script = textwrap.dedent("""
+        from concurrent.futures import ThreadPoolExecutor
+        import core.database as d
+        from sqlalchemy import text
+
+        with d.engine.begin() as c:
+            c.execute(text("CREATE TABLE b2195 (n INTEGER)"))
+
+        def write(n):
+            with d.engine.begin() as c:
+                c.execute(text("INSERT INTO b2195 (n) VALUES (:n)"), {"n": n})
+
+        for _ in range(10):
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                list(pool.map(write, range(16)))
+        with d.engine.connect() as c:
+            print("rows", c.execute(text("SELECT COUNT(*) FROM b2195")).scalar())
+    """)
+    env = dict(os.environ, DATABASE_URL="sqlite:///:memory:")
+    env["PYTHONPATH"] = str(ROOT) + os.pathsep + env.get("PYTHONPATH", "")
+    done = subprocess.run([sys.executable, "-c", script], cwd=ROOT, env=env,
+                          capture_output=True, text=True, timeout=300)
+    assert done.returncode == 0 and "rows 160" in done.stdout, (
+        f"exit {done.returncode}: {done.stdout[-500:]} {done.stderr[-2000:]}")

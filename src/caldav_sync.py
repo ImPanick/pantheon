@@ -33,6 +33,8 @@ import socket
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlparse, urlunparse
+from src.local_hosts import NEVER_FETCHED_NAMES
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 logger = logging.getLogger(__name__)
 
@@ -41,12 +43,7 @@ logger = logging.getLogger(__name__)
 # events still come through via RRULE expansion on the frontend.
 _LOOKBACK_DAYS = 90
 _LOOKAHEAD_DAYS = 365
-_BLOCKED_HOSTS = {
-    "localhost",
-    "localhost.",
-    "ip6-localhost",
-    "metadata.google.internal",
-}
+_BLOCKED_HOSTS = NEVER_FETCHED_NAMES
 
 
 def _private_caldav_allowed() -> bool:
@@ -354,8 +351,8 @@ def _sync_blocking(owner: str, url: str, username: str, password: str, account_i
                 result["errors"].append(f"No calendars and URL fallback failed: {e}")
                 return result      # outer finally will call client.close()
 
-        start = datetime.utcnow() - timedelta(days=_LOOKBACK_DAYS)
-        end = datetime.utcnow() + timedelta(days=_LOOKAHEAD_DAYS)
+        start = utcnow_naive() - timedelta(days=_LOOKBACK_DAYS)
+        end = utcnow_naive() + timedelta(days=_LOOKAHEAD_DAYS)
 
         db = SessionLocal()        # if this raises, outer finally still calls client.close()
         try:
