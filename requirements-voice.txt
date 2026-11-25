@@ -27,7 +27,7 @@ faster-whisper==1.2.1
 # to 19 with the faster-whisper release that carries that, and not before
 # (`.github/dependabot.yml` holds PyAV's majors back;
 # `tests/test_speech_to_text_keeps_up_with_a_conversation.py` fails on 19).
-av==18.1.0
+av==18.1.1
 
 # Piper, for the "piper" voice: ONNX Runtime on the CPU, fast enough to speak
 # a sentence while the next is written. GPL-3.0-or-later (it carries
@@ -39,3 +39,8 @@ av==18.1.0
 # phonemes come from the espeak-ng Piper carries (`services/tts/kokoro_cpu.py`).
 # The model is baked into the image or fetched once (`kokoro-onnx`'s release).
 piper-tts==1.8.0
+# `B2191`. Imported directly by `services/tts/kokoro_cpu.py`, which runs
+# Kokoro's ONNX export itself; Piper and faster-whisper bring it. It is also
+# why the image is not on Python 3.15: 1.32.0, the newest, publishes wheels
+# for 3.11-3.14 and no source to build from (`D-2026-11-24-03`).
+onnxruntime==1.32.0

@@ -54,6 +54,7 @@ from src.task_scheduler import (  # noqa: E402
     task_timeout_seconds,
     valid_timezone,
 )
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 # `scheduled_tasks` as it was before this row, written out rather than derived
 # from the model — a schema derived from the model is the schema that already
@@ -458,7 +459,7 @@ async def test_a_retry_budget_is_honoured_by_the_engine_not_just_the_helper(
     task = _task(task_db)
     assert task.next_run is not None
     # Brought forward onto the ladder rather than left at tomorrow 09:00.
-    assert task.next_run < datetime.utcnow() + timedelta(hours=12)
+    assert task.next_run < utcnow_naive() + timedelta(hours=12)
     db = task_db()
     try:
         run = db.query(TaskRun).filter(TaskRun.id == "r1").first()
@@ -507,7 +508,7 @@ async def test_the_backoff_finally_reaches_a_returned_failure(task_db, monkeypat
     await _scheduler()._execute_task_locked(
         "t1", "r1", gate_foreground=False, release_executing=False)
 
-    gap = (_task(task_db).next_run - datetime.utcnow()).total_seconds()
+    gap = (_task(task_db).next_run - utcnow_naive()).total_seconds()
     # Attempt six on a doubling ladder from a 300s base is 9600s. The assertion
     # is only that the ladder applied at all — "much more than the 5-minute
     # slot" — because the value is jittered on purpose.
@@ -642,7 +643,7 @@ async def test_the_scheduler_sizes_the_spread_in_the_task_s_own_zone(
         db.query(ScheduledTask).filter(ScheduledTask.id == "t1").first().tz_name = \
             "Australia/Sydney"
         db.query(ScheduledTask).filter(ScheduledTask.id == "t1").first().next_run = \
-            datetime.utcnow() - timedelta(minutes=1)
+            utcnow_naive() - timedelta(minutes=1)
         db.commit()
     finally:
         db.close()

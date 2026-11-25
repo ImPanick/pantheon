@@ -36,9 +36,17 @@ REQUIREMENTS = ROOT / "requirements.txt"
 def test_the_report_reads_requirements_txt_and_not_a_second_list():
     """`Law 13`. A hand-copied dependency list is the defect, not the fix."""
     gaps = suite_conftest._declared_dependency_gaps()
+    from packaging.markers import Marker
+
+    def applies(spec):
+        # `B2190`: a pin whose marker names another interpreter is not this
+        # environment's dependency, for pip or for the report.
+        _, sep, marker = spec.partition(";")
+        return not sep or Marker(marker.strip()).evaluate()
+
     declared = [line.split("#")[0].strip()
                 for line in REQUIREMENTS.read_text(encoding="utf-8").splitlines()
-                if line.split("#")[0].strip()]
+                if line.split("#")[0].strip() and applies(line.split("#")[0].strip())]
     assert suite_conftest._DECLARED_COUNT[0] == len(declared) > 25
     for gap in gaps:
         name = gap.split(":")[0]
@@ -137,6 +145,26 @@ def test_an_exact_pin_that_is_met_exactly_is_not_a_gap(monkeypatch, tmp_path):
     """And the pin the environment does satisfy stays out of the report."""
     installed = importlib.metadata.version("pytest")
     assert _gaps_for(monkeypatch, tmp_path, f"pytest=={installed}") == []
+
+
+def test_a_pin_for_another_interpreter_is_not_a_gap(monkeypatch, tmp_path):
+    """`B2190`. numpy is pinned twice, one release per interpreter range
+    (`numpy==2.5.5; python_version >= "3.12"` and 2.4.6 below it), and pip
+    installs only the line whose marker matches. Read without its marker, the
+    other line is a version this interpreter was never meant to have, and the
+    footer reported every complete environment as one with a gap."""
+    installed = importlib.metadata.version("pytest")
+    never = 'python_version < "3.0"'
+    assert _gaps_for(monkeypatch, tmp_path,
+                     f"pytest==0.0.1; {never}\npytest=={installed}") == []
+
+
+def test_a_pin_whose_marker_matches_is_still_read(monkeypatch, tmp_path):
+    """And a marker that does match changes nothing about the comparison."""
+    installed = importlib.metadata.version("pytest")
+    gaps = _gaps_for(monkeypatch, tmp_path, 'pytest==0.0.1; python_version >= "3.0"')
+    assert gaps == [f'pytest: {installed} installed, pytest==0.0.1; '
+                    f'python_version >= "3.0" declared']
 
 
 def test_the_report_survives_a_requirements_file_it_cannot_read(monkeypatch,

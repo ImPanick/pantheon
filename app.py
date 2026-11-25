@@ -7,6 +7,7 @@ import asyncio
 import collections
 import hashlib
 import time
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 # On Windows, asyncio.create_subprocess_exec/shell require the ProactorEventLoop.
 # When started via `python -m uvicorn` from a terminal, uvicorn sets this
@@ -661,7 +662,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                             _db = SessionLocal()
                             try:
                                 _db.query(ApiToken).filter(ApiToken.id == tid).update(
-                                    {"last_used_at": datetime.utcnow()}
+                                    {"last_used_at": utcnow_naive()}
                                 )
                                 _db.commit()
                             finally:

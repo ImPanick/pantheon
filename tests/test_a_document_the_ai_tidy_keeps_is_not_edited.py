@@ -21,13 +21,14 @@ only the model's reply faked (`Law 20`).
 
 import json
 import re
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from tests.test_the_documents_tidy_asks_first import LONG_AGO, cdb, doc, world  # noqa: F401
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 
 @pytest.fixture
@@ -112,7 +113,7 @@ def test_the_library_reads_the_same_after_a_tidy_that_kept_everything(world, lib
     doc(world, "Budget 2026", content="real numbers")
     doc(world, "Trip plan", content="Lisbon in May", created=LONG_AGO + timedelta(days=1))
     doc(world, "Today's notes", content="typed a minute ago",
-        created=datetime.utcnow() - timedelta(minutes=1))
+        created=utcnow_naive() - timedelta(minutes=1))
     before = library.shelf()
     assert [title for title, _t in before] == ["Today's notes", "Trip plan", "Budget 2026"]
     # `B1948`: "Today's notes", made a minute ago, is left alone, as the

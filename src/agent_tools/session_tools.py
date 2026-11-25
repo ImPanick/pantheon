@@ -17,6 +17,7 @@ import uuid
 from typing import Dict, Optional
 
 from src.ai_interaction import get_session_manager, _resolve_model, AI_CHAT_TIMEOUT
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +133,7 @@ async def list_sessions(content: str, session_id: Optional[str] = None, owner: O
         def _rel(ts):
             if not ts:
                 return 'never'
-            now = datetime.utcnow()
+            now = utcnow_naive()
             try:
                 if ts.tzinfo is not None:
                     now = datetime.now(timezone.utc)

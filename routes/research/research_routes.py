@@ -7,7 +7,7 @@
 # privilege store refuses a delegated owner's research (`B531`), and that
 # check reads through the one privilege rule (`B530`); a library row says why
 # its run stopped (`B1188`); its handlers do their database work off the
-# event loop (`B1223`).
+# event loop (`B1223`); its timestamps use the shared UTC clock (`B2196`).
 #
 # Upstream licence text (Tongyi DeepResearch): licenses/DeepResearch-Apache-2.0.txt
 # Attribution: CREDITS.md
@@ -20,7 +20,6 @@ import json
 import logging
 import re
 import uuid
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -32,6 +31,7 @@ from src.endpoint_resolver import resolve_endpoint
 from src.auth_helpers import get_current_user
 from src.owner_identity import REQUEST_SENTINEL_OWNERS
 from src.constants import DEEP_RESEARCH_DIR
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 _SESSION_ID_RE = re.compile(r"^[a-zA-Z0-9-]{1,128}$")
 
@@ -799,7 +799,7 @@ def setup_research_routes(research_handler, session_manager=None) -> APIRouter:
         # The user can open the visual report for source details; keeping sources
         # out of the chat context saves tokens and avoids the AI fabricating
         # citations.
-        date_str = datetime.utcnow().strftime("%Y-%m-%d")
+        date_str = utcnow_naive().strftime("%Y-%m-%d")
         primer = (
             f"[Research context — {date_str}]\n\n"
             f"The user previously ran a deep research investigation. Use the "

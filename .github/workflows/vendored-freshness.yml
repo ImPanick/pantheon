@@ -67,7 +67,7 @@ jobs:
           ref: ${{ github.event_name == 'schedule' && 'dev' || github.ref }}
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
-          python-version: "3.11"
+          python-version: "3.14"
 
       # The offline check first. If the recorded hashes do not match the tree,
       # asking upstream anything is premature — we do not yet know what we ship.

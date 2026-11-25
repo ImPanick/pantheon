@@ -53,6 +53,7 @@ from src.tool_execution import (  # noqa: E402
 from src.tool_security import (  # noqa: E402
     blocked_tool_reason, blocked_tools_for_owner, delegated_credential_blocked_tools,
 )
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 LONG_AGO = datetime(2025, 1, 2, 3, 4, 5)
 
@@ -157,7 +158,7 @@ def say(db_factory, text, session_id="chat-bob", later=1):
     request, and a plan reads only a sealed answer)."""
     from src.tool_approval_scopes import PERSON_MESSAGE_SEAL_FIELD, seal_person_message
 
-    when = datetime.utcnow() + timedelta(seconds=later)
+    when = utcnow_naive() + timedelta(seconds=later)
     seal = seal_person_message(session_id, text, said_at=when)
     db = db_factory()
     db.add(cdb.ChatMessage(id=str(uuid.uuid4()), session_id=session_id, role="user",
@@ -379,7 +380,7 @@ def mess(people):
         "copy": doc(people, "Notes", content="the same notes"),
         "keep": doc(people, "Budget 2026", content="real numbers"),
         # Made a minute ago: the rules leave a document being written alone.
-        "fresh": doc(people, "test", content="", created=datetime.utcnow() - timedelta(minutes=1)),
+        "fresh": doc(people, "test", content="", created=utcnow_naive() - timedelta(minutes=1)),
     }
 
 

@@ -89,7 +89,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
-          python-version: "3.11"
+          python-version: "3.14"
       # Byte-compile sources — catches syntax errors without installing deps.
       #
       # `B436`. This used to be `compileall app.py core routes src services
@@ -124,7 +124,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
-          python-version: "3.11"
+          python-version: "3.14"
       # `B2114`. `compileall` above proves a file parses; nothing proved a
       # name it uses exists. `B2113` shipped a `NameError` on the https
       # branch of every dedicated Android host for that reason. The rule set
@@ -135,7 +135,7 @@ jobs:
       - name: ruff check
         run: |
           set -euo pipefail
-          pip install ruff==0.17.5
+          pip install ruff==0.17.6
           python3 -c "
           import importlib.util, subprocess, sys
           spec = importlib.util.spec_from_file_location('gate', '.pantheon/release-gate.py')
@@ -162,7 +162,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
-          python-version: "3.11"
+          python-version: "3.14"
           cache: pip
       # `B855`. This job installed nothing until 2026-09-19, and twenty-two of
       # its twenty-five steps had therefore never run — not once, in the whole
@@ -605,7 +605,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
-          python-version: "3.11"
+          python-version: "3.14"
           cache: pip
       # `B854`. This said `pip install pytest`, and that single line meant the
       # job had never run. Two ways, both fatal. `tests/conftest.py` stubs an
@@ -620,7 +620,7 @@ jobs:
       # `pip install -r requirements.txt` and nobody having linked anything
       # yet, which is precisely the state `Law 16` makes a claim about.
       - name: Install test dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt -r requirements-dev.txt
       # Law 16 — a fresh install reaches nothing until someone links something.
       #
       # Every finding in P16 was found by a person reading code. That works once
@@ -725,9 +725,11 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         if: steps.docs-check.outputs.docs_only != 'true'
         with:
-          python-version: "3.11"
+          python-version: "3.14"
           cache: pip
-      - run: pip install -r requirements.txt
+      # `B2192`. The test runner left requirements.txt for requirements-dev.txt,
+      # so the image no longer ships it; the suite installs both.
+      - run: pip install -r requirements.txt -r requirements-dev.txt
         if: steps.docs-check.outputs.docs_only != 'true'
       # `B1591`. acorn, the parser the image's comment stripper uses, from
       # package-lock.json with its sha512 checked: the suite drives

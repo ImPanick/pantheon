@@ -45,6 +45,7 @@ from src.agent_tools.document_tools import FOLDER_ACTIONS, MAX_CHANGES_PER_CALL 
 from src.document_folders import PLAN_APPROVE_LABEL, PLAN_DECLINE_LABEL, PLAN_THRESHOLD  # noqa: E402
 from src.tool_capabilities import ToolEffect, capabilities_for_action  # noqa: E402
 from src.tool_execution import NO_TOOL_SECURITY_CONTEXT, execute_tool_block, format_tool_result  # noqa: E402
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 LONG_AGO = datetime(2025, 1, 2, 3, 4, 5)
 
@@ -109,7 +110,7 @@ def say(lib, text, session_id="chat-a", later=1):
     request, and a plan reads only a sealed answer)."""
     from src.tool_approval_scopes import PERSON_MESSAGE_SEAL_FIELD, seal_person_message
 
-    when = datetime.utcnow() + timedelta(seconds=later)
+    when = utcnow_naive() + timedelta(seconds=later)
     seal = seal_person_message(session_id, text, said_at=when)
     db = lib()
     db.add(cdb.ChatMessage(id=str(uuid.uuid4()), session_id=session_id, role="user",

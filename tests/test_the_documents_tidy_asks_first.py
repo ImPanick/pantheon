@@ -60,6 +60,7 @@ from src.tools.system import do_app_api  # noqa: E402
 from tests.helpers.esc_stub import ui_default_stub  # noqa: E402
 from tests.test_app_api_cannot_widen_the_owner import _route_httpx_into  # noqa: E402
 from tests.test_run_status_is_one_vocabulary import ROW, _h  # noqa: E402
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 ROOT = Path(__file__).resolve().parent.parent
 LONG_AGO = datetime(2025, 1, 2, 3, 4, 5)
@@ -104,7 +105,7 @@ def mess(world):
         "copy_long": doc(world, "Notes", content="the same notes", created=LONG_AGO + timedelta(days=1)),
         "copy": doc(world, "Notes", content="the same notes"),
         "keep": doc(world, "Budget 2026", content="real numbers"),
-        "fresh": doc(world, "test", content="", created=datetime.utcnow() - timedelta(minutes=1)),
+        "fresh": doc(world, "test", content="", created=utcnow_naive() - timedelta(minutes=1)),
     }
 
 

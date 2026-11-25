@@ -13,6 +13,7 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 
 def _route_endpoint(router, path: str, method: str):
@@ -74,7 +75,7 @@ async def test_negative_offset_does_not_fire_early(schedule):
     value = stored(res["id"])
     # on the old code the raw "-05:00" string compared as 3h+(-5h offset)
     # in the past and fired on the next poller tick
-    assert not value <= datetime.utcnow().isoformat()
+    assert not value <= utcnow_naive().isoformat()
 
 
 @pytest.mark.asyncio
@@ -93,7 +94,7 @@ async def test_z_suffix_stored_without_suffix(schedule):
 @pytest.mark.asyncio
 async def test_naive_utc_send_at_unchanged(schedule):
     endpoint, stored = schedule
-    naive = (datetime.utcnow() + timedelta(days=1)).isoformat()
+    naive = (utcnow_naive() + timedelta(days=1)).isoformat()
     res = endpoint(  # `B1609`: a plain `def` now
         {"to": "a@example.com", "body": "b", "send_at": naive}, owner="alice"
     )

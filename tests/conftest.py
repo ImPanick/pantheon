@@ -831,11 +831,29 @@ def _declared_dependency_gaps() -> list:
         return tuple(int(p) if p.isdigit() else p
                      for p in _re.split(r"[.\-+]", text) if p != "")
 
+    # `B2190`. A pin with an environment marker is for the interpreters the
+    # marker names (numpy is pinned once per range of Python), and pip skips it
+    # everywhere else; so does this report. A marker that cannot be read is
+    # treated as matching, so it is reported rather than hidden.
+    try:
+        from packaging.markers import Marker as _Marker
+    except ImportError:  # pragma: no cover - packaging is in requirements-dev.txt
+        _Marker = None
+
+    def _applies(spec):
+        _, sep, marker = spec.partition(";")
+        if not sep or not marker.strip() or _Marker is None:
+            return True
+        try:
+            return _Marker(marker.strip()).evaluate()
+        except Exception:  # pragma: no cover - an unreadable marker
+            return True
+
     gaps = []
     declared = 0
     for raw in lines:
         spec = raw.split("#")[0].strip()
-        if not spec:
+        if not spec or not _applies(spec):
             continue
         declared += 1
         name = _re.split(r"[<>=!~\[;]", spec, maxsplit=1)[0].strip()

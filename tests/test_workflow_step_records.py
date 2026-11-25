@@ -28,6 +28,7 @@ import src.settings as settings  # noqa: E402
 from core.database import ScheduledTask, TaskRun, TaskRunNode  # noqa: E402
 from src import workflow_runs as wr  # noqa: E402
 from src.event_bus import build_task_handoff, build_trigger  # noqa: E402
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 
 C2_NODE_RECORD = {"id", "node_id", "kind", "label", "seq", "status", "attempt", "dry",
                   "port", "workflow_version", "started_at", "finished_at", "input",
@@ -147,11 +148,11 @@ def test_records_past_the_window_are_pruned_and_runs_are_not(db):
 def test_the_prune_at_the_end_of_a_run_is_at_most_hourly(db, monkeypatch):
     monkeypatch.setattr(wr, "_last_prune", None)
     stale = _start(db, node_id="a")
-    stale.finished_at = datetime.utcnow() - timedelta(days=400)
+    stale.finished_at = utcnow_naive() - timedelta(days=400)
     db.commit()
     assert wr.maybe_prune_node_records(db) == 1
     again = _start(db, node_id="b", seq=2)
-    again.finished_at = datetime.utcnow() - timedelta(days=400)
+    again.finished_at = utcnow_naive() - timedelta(days=400)
     db.commit()
     assert wr.maybe_prune_node_records(db) == 0, "within the hour: not again"
     monkeypatch.setattr(wr, "_last_prune", wr._last_prune - wr._PRUNE_INTERVAL_SECONDS - 1)

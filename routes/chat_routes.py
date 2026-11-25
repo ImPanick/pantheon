@@ -7,7 +7,6 @@ import os
 import re
 import time
 import logging
-from datetime import datetime
 from typing import Callable, Dict, Any, AsyncGenerator, List, Optional, Union
 
 from fastapi import APIRouter, Request, HTTPException, Query, Depends
@@ -78,6 +77,7 @@ from core.log_safety import redact_url
 from routes.research_routes import _resolve_research_endpoint
 from routes.model_routes import _visible_models
 from src.env_flags import request_flag
+from src.utc_clock import utcnow_naive  # `B2196`: not the deprecated datetime.utcnow()
 def _mark_turn_start() -> None:
     """Start the turn clock (`P14-02`). Guarded: instrumentation must never be
     the reason a chat request fails to start."""
@@ -1188,7 +1188,7 @@ def _clear_orphaned_session_endpoint(sess, owner: str | None = None) -> bool:
         if db_session:
             db_session.endpoint_url = ""
             db_session.model = ""
-            db_session.updated_at = datetime.utcnow()
+            db_session.updated_at = utcnow_naive()
             db.commit()
         sess.endpoint_url = ""
         sess.model = ""
@@ -1453,7 +1453,7 @@ def _recover_empty_session_model(sess, session_id: str, owner: str | None = None
         db_session = db_session_q.first()
         if db_session:
             db_session.model = model
-            db_session.updated_at = datetime.utcnow()
+            db_session.updated_at = utcnow_naive()
             db.commit()
         sess.model = model
         logger.info(
@@ -1562,7 +1562,7 @@ def _reconcile_selected_route_from_request(
             db_session.model = selected_model
             db_session.endpoint_url = endpoint_url
             db_session.headers = sess.headers or {}
-            db_session.updated_at = datetime.utcnow()
+            db_session.updated_at = utcnow_naive()
             db.commit()
     finally:
         db.close()
