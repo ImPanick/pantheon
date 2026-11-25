@@ -383,6 +383,10 @@ Re-measured 2026-11-07, after the eightieth wave, the audit of what Odysseus fix
 
 **Direction as of 2026-11-07, after the eightieth wave: the open count is rising, mostly by rows built and claimed until the owner has tested them, and no gate stands.**
 
+Re-measured 2026-11-24, after the dependency-update wave: **140 filed, 239 closed**, open **313 → 214**, falling. The window now starts at the wave before 2026-11-11, when 177 rows were closed on CI evidence, so that closure sits inside it.
+
+**Direction as of 2026-11-24, after the dependency-update wave: the open count is falling.**
+
 ### A second number, which is the one that moves
 
 Of the last 40 `B` rows filed — `B360` through `B455`, four waves of sweeps plus
