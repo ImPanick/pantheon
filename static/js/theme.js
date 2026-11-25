@@ -12,8 +12,8 @@ import { makeWindowDraggable } from './windowDrag.js';
 export const THEMES = {
   // The Pantheon look (getpantheon.ai): near-black ink, cool steel lines and a
   // single warm gold accent. The default for anyone who hasn't picked a theme;
-  // its light twin follows the system's light mode. Both open in the
-  // `hairline` finish (see `THEME_DEFAULT_FINISH` and `static/hairline.css`).
+  // its light twin follows the system's light mode. Like every theme, both
+  // open in the `hairline` finish (see `DEFAULT_FINISH`, `static/hairline.css`).
   pantheon:   { bg:'#06080e', fg:'#eaedf4', panel:'#0f1420', border:'#2a3142', red:'#f3b23f',
                 advanced: { sendBtnBg: '#f3b23f', sendBtnHover: '#ffc96a',
                             userBubbleBg: '#151b2a', aiBubbleBg: '#06080e', bubbleBorder: '#1e2433',
@@ -131,15 +131,15 @@ const THEME_DEFAULT_FROSTED = {
 // palette. `glass` is the cockpit as it shipped (translucent slabs, a light
 // field, soft lift, gradient accents). `hairline` is the getpantheon.ai
 // material: solid surfaces, one-pixel lines, small radii and flat gold accents
-// (`static/hairline.css`). Themes not listed open in glass; a finish a person
-// picks is stored with the theme and wins.
+// (`static/hairline.css`). Every theme opens in hairline, each in its own
+// colours (the owner, 2026-11-25: "Ensure all other themes follow suite,
+// retaining the 'classy' new pantheon look"); glass stays one pick away in
+// Customize -> Finish, and a finish a person picks is stored with the theme
+// and wins.
 export const FINISHES = ['glass', 'hairline'];
-const THEME_DEFAULT_FINISH = {
-  pantheon:      'hairline',
-  pantheonlight: 'hairline',
-};
-export function defaultFinishFor(name) {
-  return THEME_DEFAULT_FINISH[name] || 'glass';
+export const DEFAULT_FINISH = 'hairline';
+export function defaultFinishFor(_name) {
+  return DEFAULT_FINISH;
 }
 
 // ── Custom theme persistence ──
@@ -934,9 +934,9 @@ export function applyFrostedGlass(on) {
 }
 
 /** The finish (`glass` | `hairline`), as `data-ck-finish` on <html> — the
- *  attribute `static/hairline.css` is scoped to. Anything unknown is glass. */
+ *  attribute `static/hairline.css` is scoped to. Anything unknown is the default. */
 export function applyFinish(finish) {
-  const f = FINISHES.includes(finish) ? finish : 'glass';
+  const f = FINISHES.includes(finish) ? finish : DEFAULT_FINISH;
   document.documentElement.setAttribute('data-ck-finish', f);
   return f;
 }
@@ -1947,7 +1947,7 @@ export function initThemeUI() {
       // and size off the custom properties when they start, so setting them
       // after `applyBgPattern` would leave the first frames on the old values.
       applyFrostedGlass(!!opts.frosted);
-      applyFinish(opts.finish || 'glass');
+      applyFinish(opts.finish || DEFAULT_FINISH);
       _noteBgTheme(slug);   // `P9-16`
       applyBgPattern(opts.bgPattern || 'none');
       importAreaEl.classList.add('hidden');

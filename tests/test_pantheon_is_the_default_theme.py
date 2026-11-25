@@ -2,9 +2,10 @@
 """The Pantheon look (getpantheon.ai) is the default theme, in light and dark.
 
 Someone who has never picked a theme gets `THEMES.pantheon`, or
-`THEMES.pantheonlight` when their system is in light mode, both in the
-`hairline` finish (`static/hairline.css`). Every other theme keeps the glass
-cockpit it had.
+`THEMES.pantheonlight` when their system is in light mode. Every theme opens in
+the `hairline` finish (`static/hairline.css`), each in its own colours; glass is
+a pick in Customize -> Finish. A reply's bold and italics are the reply's own
+ink on every palette, not the syntax hues.
 
 The palettes live in four places that must agree, or the first frame paints one
 colour and the module repaints another a moment later:
@@ -14,8 +15,8 @@ colour and the module repaints another a moment later:
     keys);
   * the first-paint script in `static/login.html` (base colours only; that page
     reads no advanced keys);
-  * `THEME_DEFAULT_FINISH`, and the `/^pantheon(light)?$/` test both first-paint
-    scripts use for the same answer.
+  * `DEFAULT_FINISH`, and the `'hairline'` fallback both first-paint scripts
+    use for the same answer.
 
 And `static/hairline.css`'s generated block must be what
 `scripts/make-hairline-css.py` would write from today's cockpit.css, so a later
@@ -83,13 +84,32 @@ def test_default_names_point_at_the_presets():
     assert "prefers-color-scheme: light" in THEME_JS
 
 
-def test_default_finish_is_hairline_for_the_presets_and_agrees_with_first_paint():
-    m = re.search(r"THEME_DEFAULT_FINISH\s*=\s*\{([^}]*)\}", THEME_JS)
-    assert m
-    table = dict(re.findall(r"(\w+)\s*:\s*'(\w+)'", m.group(1)))
-    assert table == {"pantheon": "hairline", "pantheonlight": "hairline"}
+def test_every_theme_opens_in_hairline_and_first_paint_agrees():
+    assert re.search(r"export const DEFAULT_FINISH\s*=\s*'hairline'", THEME_JS)
+    m = re.search(r"export function defaultFinishFor\([^)]*\)\s*\{(.*?)\}", THEME_JS, re.S)
+    assert m and m.group(1).strip() == "return DEFAULT_FINISH;", m and m.group(1)
+    assert "THEME_DEFAULT_FINISH" not in THEME_JS
+    assert "applyFinish(opts.finish || 'glass')" not in THEME_JS
     for html in (INDEX, LOGIN):
-        assert "/^pantheon(light)?$/.test(t.name) ? 'hairline' : 'glass'" in html
+        assert "? t.finish\n          : 'hairline');" in html
+        assert ": 'glass'" not in html
+
+
+COCKPIT = (ROOT / "static" / "cockpit.css").read_text(encoding="utf-8")
+
+
+def test_reply_emphasis_is_the_replys_own_ink_on_every_palette():
+    """style.css gives bold, italics and bold italics the syntax hues; on gold
+    those land on teal and pink. The cockpit (every page carries it) puts them
+    back in the reply's ink, in both finishes."""
+    for sel, val in (
+        (r"html\.cockpit \.msg \.body :is\(strong, b\) \{ color: inherit;", None),
+        (r"html\.cockpit \.msg \.body :is\(em, i\),\s*html\.cockpit \.msg \.body :is\(strong, b\) :is\(em, i\),"
+         r"\s*html\.cockpit \.msg \.body :is\(em, i\) :is\(strong, b\) \{ color: inherit; \}", None),
+        (r"html\.cockpit \.msg \.body :is\(h4, h5, h6\) \{ color: var\(--ck-text\); \}", None),
+    ):
+        assert re.search(sel, COCKPIT), sel
+    assert 'class="cockpit"' in INDEX
 
 
 def test_index_links_hairline_after_cockpit():
