@@ -64,7 +64,7 @@
       // getpantheon.ai material (the rules under `data-ck-finish` below).
       document.documentElement.setAttribute('data-ck-finish',
         (t.finish === 'glass' || t.finish === 'hairline') ? t.finish
-          : (/^pantheon(light)?$/.test(t.name) ? 'hairline' : 'glass'));
+          : 'hairline');
       if (t && t.colors) {
       var c = t.colors;
       // Base palette

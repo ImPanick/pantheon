@@ -94,4 +94,10 @@ regexes = [
   # account exists only for the minutes the test runs. Both boundaries keep
   # the entry from excusing a longer value.
   '''\bboxer-pass-123\b''',
+  # `static/lib/mermaid.min.js` (Mermaid 12, `B2220`) — minified bundle
+  # code, not a credential: `b=m.keyCount,v=m.atlasCount` assigns two counters
+  # from one object, and the scanner reads `keyCount,` as a key name followed
+  # by the value `v=m.atlasCount`. Both boundaries keep the entry from excusing
+  # anything longer.
+  '''\bkeyCount,v=m.atlasCount\b''',
 ]
