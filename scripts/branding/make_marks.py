@@ -53,14 +53,16 @@ BRAND = ROOT / "docs" / "brand"
 
 # ── Colours ──────────────────────────────────────────────────────────────────
 # Two inks, for the two kinds of background, and a tile for the app icon. They
-# are the default palette's own colours (`static/js/theme.js` THEMES.dark: bg
-# #282c34, fg #9cdef2), so the icon on a dock looks like the product it opens.
+# are the default palette's own colours (`static/js/theme.js` THEMES.pantheon,
+# the getpantheon.ai look since 2026-11-24: bg #06080e and its brand gold
+# #f3b23f; before it, THEMES.dark's #282c34 and #9cdef2), so the icon on a dock
+# looks like the product it opens.
 # Inside the app the mark is never drawn in these: it takes `currentColor`, which
 # the welcome screen and login card set to each palette's brand colour.
 INK_ON_LIGHT = "#1f232b"   # deep slate, for light backgrounds
 INK_ON_DARK = "#ece7dd"    # warm marble, for dark backgrounds
-TILE_BG = "#282c34"        # the default palette's background
-TILE_FG = "#9cdef2"        # the default palette's foreground
+TILE_BG = "#06080e"        # the default palette's background
+TILE_FG = "#f3b23f"        # the default palette's brand colour
 
 # Light and dark backgrounds the contact sheet proves the mark on.
 SHEET_LIGHT = "#faf6f0"

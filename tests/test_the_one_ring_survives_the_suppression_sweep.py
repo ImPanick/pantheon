@@ -161,7 +161,7 @@ def measured(app_url, tmp_path_factory):  # noqa: F811
 
 def test_every_palette_was_measured(measured):
     assert measured["errors"] == []
-    assert len(measured["themes"]) == 20, sorted(measured["themes"])  # three retired: theme.js `RETIRED_THEMES`
+    assert len(measured["themes"]) == 22, sorted(measured["themes"])  # three retired (theme.js `RETIRED_THEMES`), two Pantheon presets added
 
 
 def test_keyboard_focus_draws_the_one_ring_on_every_surface_and_palette(measured):
@@ -178,7 +178,7 @@ def test_keyboard_focus_draws_the_one_ring_on_every_surface_and_palette(measured
 
 def test_the_document_editor_draws_the_one_ring_on_every_palette(measured):
     docs = measured["docThemes"]
-    assert len(docs) == 20, sorted(docs)  # three retired: theme.js `RETIRED_THEMES`
+    assert len(docs) == 22, sorted(docs)  # three retired (theme.js `RETIRED_THEMES`), two Pantheon presets added
     wrong = [(name, row["got"]["#doc-editor-textarea"], row["want"]) for name, row in docs.items()
              if not (row["got"]["#doc-editor-textarea"]["visible"]
                      and row["got"]["#doc-editor-textarea"]["style"] == "solid"

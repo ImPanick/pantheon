@@ -193,7 +193,7 @@ data, `.pantheon/retrieval_eval.py --generate` builds a test set from your memor
 - **The rest of a workspace.** Mail over IMAP/SMTP with triage and reply drafts, documents, notes,
   tasks, a CalDAV calendar, deep research, Compare for blind side-by-side model tests, image
   generation and editing, a vault for the keys and logins the agent may use, model serving with
-  hardware-aware picks, twenty themes, and the whole app at phone width.
+  hardware-aware picks, twenty-two themes (Pantheon by default), and the whole app at phone width.
 
 The full list, and what the fork added over Odysseus, is in [docs/features.md](docs/features.md).
 
@@ -231,7 +231,7 @@ The full list, and what the fork added over Odysseus, is in [docs/features.md](d
 </tr>
 <tr>
 <td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/palette-dark.webp"><img src="docs/media/palette-light.webp" alt="The command palette after typing work, offering the Workstation screen, the Workbench, settings pages, a slash command and a matching chat" width="100%"></picture><br><sub><b>One box for everything.</b> Windows, settings, commands and chats.</sub></td>
-<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/themes-dark.webp"><img src="docs/media/themes-light.webp" alt="The Theme window with palette swatches over a chat" width="100%"></picture><br><sub><b>Themes.</b> Twenty palettes, light and dark.</sub></td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/themes-dark.webp"><img src="docs/media/themes-light.webp" alt="The Theme window with palette swatches over a chat" width="100%"></picture><br><sub><b>Themes.</b> Twenty-two palettes, light and dark.</sub></td>
 </tr>
 <tr><td colspan="2"><img src="docs/media/themes.gif" alt="Animation: the Theme window switching through the light, paper, forest, ocean, copper and lavender palettes and back to dark" width="100%"><br><sub><b>Switching palettes.</b> One click each.</sub></td></tr>
 <tr><td colspan="2" align="center"><img src="docs/media/phone-chat.webp" alt="The launch-week chat at phone width" width="31%"> <img src="docs/media/phone-documents.webp" alt="The Library at phone width" width="31%"> <img src="docs/media/phone-tasks.webp" alt="The Tasks window at phone width" width="31%"><br><sub><b>At phone width.</b> The same app in one hand.</sub></td></tr>
