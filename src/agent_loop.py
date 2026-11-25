@@ -3227,9 +3227,27 @@ def _looks_like_local_computer_request(text: str) -> bool:
     return False
 
 
-def _explicitly_references_missing_workspace(text: str, workspace: Optional[str]) -> bool:
+def _explicitly_references_missing_workspace(text: str, workspace: Optional[str],
+                                             owner: Optional[str] = None) -> bool:
+    """Whether the turn names "the workspace" when there is none to work in,
+    so it is answered with how to pick one instead of run.
+
+    For a person whose tools run in their workstation there is always one:
+    with no folder picked, the shell and file tools start in their
+    workstation home (`get_workspace` answers it, `B968`). The owner's test
+    on the dev build (2026-11-25), Agent mode in a plain chat with the
+    Workstation open: "Setup the VM in the workspace.. It's under
+    workstation" was answered "No active workspace is set" and never reached
+    the model. "The workspace" was the Workspace panel holding their VM."""
     if workspace:
         return False
+    if owner:
+        try:
+            from src.agent_tools import workstation_tools
+            if workstation_tools.routes("bash", owner):
+                return False
+        except Exception:  # noqa: BLE001 — unanswerable: ask for a folder, as before
+            logger.debug("could not ask whether %r works in a workstation", owner, exc_info=True)
     text = str(text or "")
     if not text.strip():
         return False
@@ -8149,7 +8167,7 @@ async def stream_agent_loop(
     # Tool retrieval uses the latest message by default. It may inherit recent
     # user turns only for explicit continuations ("yes", "do it", "1").
     _retrieval_query = str(_intent.get("retrieval_query") or _last_user)
-    if _explicitly_references_missing_workspace(_retrieval_query, workspace):
+    if _explicitly_references_missing_workspace(_retrieval_query, workspace, owner):
         msg = (
             "No active workspace is set. Use `/workspace pick` or "
             "`/workspace set /absolute/path`, then rerun the request."

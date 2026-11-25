@@ -4840,6 +4840,21 @@ class TaskScheduler:
                     if (task_obj is not None and run_obj is not None
                             and run_obj.status == "error"):
                         self._advance_chain(db, task_obj, "error", run_id)
+                    # Apollo. A goal's lead that stopped before it reported
+                    # says so on the goal and in Apollo's chat, instead of the
+                    # goal reading Working with nothing happening (the owner's
+                    # test, 2026-11-25). A run that finished and fell short
+                    # already moved its goal in `report_landed`.
+                    from src.agents.runtime import AgentDidNotDeliver as _DidNotDeliver
+                    if (task_obj is not None and run_obj is not None and run_obj.status == "error"
+                            and not isinstance(exec_exc, _DidNotDeliver)):
+                        try:
+                            from src.apollo import runs as _apollo_runs
+                            _apollo_runs.report_failed(db, task_obj.id, err_text,
+                                                       post=self._post_to_apollo)
+                        except Exception:
+                            logger.warning("Could not tell the Apollo goal that %s's run stopped",
+                                           task_id, exc_info=True)
                 except Exception as commit_err:
                     # Commit failed — without a fallback the run row stays
                     # "running" forever AND next_run stays in the past, so the

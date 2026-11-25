@@ -60,7 +60,7 @@ def test_a_goal_with_no_agent_named_gets_a_lead_written_for_it(db, no_fit):
     assert G.is_goal_lead(t.lead_agent) and t.lead_agent == G.lead_id(t.id)
     assert t.next_step is None
     m = get_agent(ADA, t.lead_agent)
-    assert m is not None and m.name == "Lead: Renew the rack's TLS certificate"
+    assert m is not None and m.name == "Ops lead"
     assert get_agent("bob", t.lead_agent) is None                 # another person's lookups don't find it
     agents, _broken = catalogue(ADA)
     assert t.lead_agent not in {a.id for a in agents}             # never in the roster or the hall
@@ -112,7 +112,7 @@ def test_a_spec_that_cant_be_written_falls_back_to_the_plain_lead(no_fit, monkey
         return real(text)
     monkeypatch.setattr(workshop, "check", check)
     m = G.write(ADA, "00000000000000000000aaaa", title="Plan the garden", spec={"name": "Bad lead"})
-    assert m.name == "Lead: Plan the garden" and list(m.tools) == list(G.DEFAULT_TOOLS)
+    assert m.name == "Planning lead" and list(m.tools) == list(G.DEFAULT_TOOLS)
 
 
 def test_when_nothing_can_be_written_apollo_leads_the_goal(db, no_fit, monkeypatch):

@@ -806,6 +806,48 @@ async def ensure_ready(owner: Optional[str], *, auth_manager: Any = None) -> Rea
     return Ready(client, account, daemon, home)
 
 
+# ── every account's own workspace, made with the account ──────────────────────
+#
+# The owner (2026-11-25): Apollo "should be able to link into users workspaces
+# which should be predefined and assigned on account creation." A person's
+# workspace is their workstation home (`B968`: with no folder picked, the shell
+# and file tools start there, and `get_workspace` answers it). It used to be
+# made the first time a tool ran there. Now it is made when the account is
+# made, and every existing account gets its own at startup, so Apollo's leads
+# and Agent mode find it waiting and nobody picks a folder to have one.
+
+
+async def provision_home(owner: Optional[str], *, auth_manager: Any = None) -> Optional[str]:
+    """Make this person's workstation home now. Its account name, or `None`
+    when their work doesn't run in the workstation (it is off, routing is off,
+    or an admin hasn't let them use it) or the workstation didn't answer. It
+    never raises: an account is made whether or not its home could be."""
+    try:
+        if not workstation_owner(owner) or not routes_tools(owner, auth_manager=auth_manager):
+            return None
+        ready = await ensure_ready(owner, auth_manager=auth_manager)
+        return ready.account
+    except WorkstationError as e:
+        logger.info("could not make %r's workstation home yet: %s", owner, e)
+        return None
+    except Exception as e:  # noqa: BLE001 — the next tool call makes it instead
+        logger.warning("could not make %r's workstation home: %s", owner, e)
+        return None
+
+
+async def provision_all(auth_manager: Any = None) -> Dict[str, Optional[str]]:
+    """Every account's home, made for those that don't have one yet (the
+    daemon's `ensure` leaves one that exists as it is). `{name: account|None}`."""
+    if auth_manager is None:
+        from src.auth_manager_access import shared_auth_manager
+        auth_manager = shared_auth_manager()
+    users = getattr(auth_manager, "users", {}) or {}
+    out: Dict[str, Optional[str]] = {}
+    for name in sorted(users):
+        out[name] = await provision_home(name, auth_manager=auth_manager)
+    return out
+
+
 async def reset_home(owner: Optional[str], *, auth_manager: Any = None) -> Dict[str, Any]:
     """This person's home back to the image's, and nobody else's. There is no
     parameter naming whose: the account is derived from the caller."""
