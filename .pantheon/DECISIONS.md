@@ -4276,6 +4276,34 @@ Each ruling below is his, in his words where they are short.
 9. **Code-scanning alerts** `#526`, `#528`, `#530`, `#531` and `#536` are false
    positives to dismiss. *"Dismiss false-positives."*
 
+## D-2026-11-24-01 - wire what is unwired; remove only what is provably dead
+
+The owner, 2026-11-24 18:33 UTC, verbatim: *"No dead code but we dont delete..
+we wire it in where it's unwired and loop make the systems work. If its truly,
+no shit dead code.. We can remove it."*
+
+This supersedes `Law 1`'s *no deletion without a `DELETE` ruling* for the
+wiring audit of 2026-11-24 (`B2150`–`B2163`), and for that audit only. What it
+permits and what it cost:
+
+1. **Wired** where the thing had a clear purpose and a live place to serve it:
+   the document index records its retrieval hit rate (`B2152`), the Workbench
+   asks the tile manager whether it is maximized (`B2158`), the Growth view
+   asks only for the periods it offers (`B2159`), the capability reader
+   registry is typed by the contract `base.py` declares (`B2160`).
+2. **Removed** only where a search across `.py/.js/.html/.css/.md/.yml/.json/
+   .sh`, tests and Dockerfiles included, plus `getattr`/`importlib`/route
+   tables, was empty outside the definition, **or** the thing was superseded by
+   a live replacement named on its row (`B2150`, `B2151`, `B2153`–`B2157`).
+   Cost: two test files that pinned `RAGManager`, a wrapper the running product
+   never built, went with it; an operator who ran `scripts/index_documents.py`
+   by hand now re-indexes from Personal documents, which indexes under their
+   own name instead of under nobody's.
+3. **Left alone and listed** where the purpose is unclear, the surface is
+   public, or the call is a product decision (`B2162`): the vector tool
+   retrieval switch, `src/topic_analyzer.py`, `POST /api/auth/signup-toggle`,
+   `mcp_servers/memory_server.py`, the test-only route shims, the
+   maintainer scripts, `ge:inpaint-done`, and the test seams.
 ## D-2026-11-24-04 — every non-Python dependency to its newest release, Dependabot onto `dev`, branch protection on `main` only
 
 The owner (Panick), 2026-11-24, verbatim: *"Branch protection. only on main.

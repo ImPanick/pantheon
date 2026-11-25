@@ -3962,21 +3962,8 @@ def _set_here(name: str, command: str) -> bool:
     return False
 
 
-def shell_destroys(command: str) -> Optional[str]:
-    """Why this shell command carries `destructive`, or `None`."""
-    return reason(read_shell(command))
-
-
-def python_destroys(code: str) -> Optional[str]:
-    """Why this Python carries `destructive`, or `None`."""
-    return reason(python_findings(code))
-
-
-def shell_reaches(command: str) -> Optional[str]:
-    """`B1652`. Why this shell command carries `network_egress`, or `None`."""
-    return reason(read_shell(command), REACHES)
-
-
-def python_reaches(code: str) -> Optional[str]:
-    """`B1652`. Why this Python carries `network_egress`, or `None`."""
-    return reason(python_findings(code), REACHES)
+# (`B2154`: `shell_destroys`, `python_destroys`, `shell_reaches` and
+# `python_reaches` were here, one-line wrappers over `reason`. Since `B1652`,
+# `tool_capabilities` reads `read_shell` /
+# `python_findings` once and asks `readings` for both answers, and nothing
+# called them.)

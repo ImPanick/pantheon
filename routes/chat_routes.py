@@ -2054,15 +2054,9 @@ def setup_chat_routes(
         active_email_uid = form_data.get("active_email_uid", "").strip()
         active_email_folder = form_data.get("active_email_folder", "INBOX").strip() or "INBOX"
         active_email_account = form_data.get("active_email_account", "").strip()
+        # `B2153`. Per request, never process-wide: this dict is the one copy
+        # the agent reads (`active_email=` below).
         active_email_ctx: Optional[Dict[str, str]] = None
-        # Always reset between requests so a stale active-email pointer from
-        # a previous turn (different reader closed, different account, etc.)
-        # can't leak in when the user has no email open this turn.
-        try:
-            from src.tool_implementations import clear_active_email
-            clear_active_email()
-        except Exception:
-            pass
         if active_email_uid:
             active_email_ctx = {
                 "uid": active_email_uid,
@@ -2089,18 +2083,6 @@ def setup_chat_routes(
                         active_email_ctx["body_preview"] = _body_preview
             except Exception as _e:
                 logger.debug(f"[email-inject] cache enrich skipped: {_e}")
-            # Stash so email tools can resolve "this email" without UID guessing.
-            try:
-                from src.tool_implementations import set_active_email
-                set_active_email(
-                    uid=active_email_uid,
-                    folder=active_email_folder,
-                    account=active_email_account or None,
-                    subject=active_email_ctx.get("subject"),
-                    sender=active_email_ctx.get("from"),
-                )
-            except Exception as _e:
-                logger.debug(f"[email-inject] set_active_email failed: {_e}")
             logger.info(
                 "[email-inject] active_email uid=%s folder=%s account=%s subject=%r",
                 active_email_uid, active_email_folder, active_email_account or "(default)",
