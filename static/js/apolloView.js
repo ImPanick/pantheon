@@ -108,7 +108,7 @@ function _buildBar() {
 
   import('./apolloSpaces.js').then((Sp) => {
     if (!space.isConnected) return;
-    space.appendChild(Sp.createSwitcher().el);
+    space.appendChild(Sp.createSwitcher({ topLabel: 'All spaces' }).el);
   }).catch(() => {});
   return bar;
 }
