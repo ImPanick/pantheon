@@ -198,8 +198,8 @@ def test_sessions_says_so_when_no_chat_is_open_any_more():
         return src[start:end]
 
     # Delete and archive both go through `_deselectCurrentSession`; New chat is `createDirectChat`.
-    assert "_announceSessionCleared();" in body("_deselectCurrentSession")
-    assert "_announceSessionCleared();" in body("createDirectChat")
+    assert "new CustomEvent('pantheon:session-cleared')" in body("_deselectCurrentSession")
+    assert "new CustomEvent('pantheon:session-cleared')" in body("createDirectChat")
     assert "'pantheon:session-cleared'" in ASSISTANT.read_text(encoding="utf-8")
 
 
