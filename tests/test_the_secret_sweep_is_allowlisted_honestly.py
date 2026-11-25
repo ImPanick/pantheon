@@ -124,6 +124,7 @@ def test_no_allowlisted_literal_looks_like_a_real_credential(literal):
         "tok-0123456789abcdef",  # ascending hex backup round-trip fixture
         "ADA-SECRET-gitea-1",  # a test persona's key, named for what it is
         "boxer-pass-123",  # a browser drive's throwaway login, persona + pass + 123
+        "keyCount,v=m.atlasCount",  # minified Mermaid variables, not a value
     )
     assert any(m in literal for m in fake_markers), (
         f"{literal!r} does not carry any of the markers that make the existing "
