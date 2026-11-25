@@ -372,6 +372,10 @@ function _deselectCurrentSession(sid) {
     submitBtn.classList.remove('recording');
   }
   if (window._updateSendBtnIcon) window._updateSendBtnIcon();
+  // No chat is open any more. `pantheon:session-changed` is for a change to
+  // another chat and does not fire here, so a page drawn for the old chat
+  // (Apollo's, `assistant.js`) is told this way instead (owner's test, 2026-11-24).
+  try { document.dispatchEvent(new CustomEvent('pantheon:session-cleared')); } catch (_) { /* a listener's throw is its own */ }
 }
 
 function _removeSessionFromLocalState(sid) {
@@ -2566,6 +2570,8 @@ export function createDirectChat(url, modelId, endpointId, opts = {}) {
   currentSessionId = null;
   // `B1703`: no chat yet, so not the last chat's Auto (`setCurrentSessionId`).
   try { approvalModeModule.load(null); } catch (_) {}
+  // A new chat isn't the old one: a page drawn for it is told (see `_deselectCurrentSession`).
+  try { document.dispatchEvent(new CustomEvent('pantheon:session-cleared')); } catch (_) { /* a listener's throw is its own */ }
   try { window.__pantheonLastSelectedSessionId = ''; } catch (_) {}
   Storage.remove('lastSessionId');
   history.replaceState(null, '', window.location.pathname);
