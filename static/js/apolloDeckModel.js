@@ -96,3 +96,19 @@ export function home(tasks, approvals, sinceIso) {
         : 'Nothing running. Give Apollo a goal.',
   };
 }
+
+/** The control pane's Chats: the person's other chats, as the sidebar lists
+ *  them (not archived, not Apollo's own, not a Nobody chat), favourites first
+ *  and then the most recently active, `limit` of them. `incognito(id)` says
+ *  whether a chat is a Nobody chat the sidebar leaves out. */
+export function chatRows(sessions, currentId, { limit = 6, incognito = () => false } = {}) {
+  const rows = (Array.isArray(sessions) ? sessions : []).filter((s) => s && s.id
+    && s.id !== currentId && !s.archived && s.folder !== 'Assistant' && !incognito(s.id)
+    && !['Nobody', 'Incognito'].includes(String(s.name || '').trim()));
+  const when = (s) => String(s.last_message_at || s.updated_at || s.created_at || '');
+  rows.sort((a, b) => (Number(!!b.is_important) - Number(!!a.is_important)) || when(b).localeCompare(when(a)));
+  return {
+    rows: rows.slice(0, limit).map((s) => ({ id: s.id, name: String(s.name || '').trim() || 'Untitled chat', pinned: !!s.is_important })),
+    more: Math.max(0, rows.length - limit),
+  };
+}
