@@ -3825,6 +3825,64 @@
               <div id="set-taskModelMsg" style="font-size:11px;color:color-mix(in oklab, var(--fg) 45%, var(--fg-muted));"></div>
             </div>
           </div>
+          <!-- `B2241`. The reasoning cache (NVIDIA's CPU-ARC): each person's
+               own Off / Shadow / Live (`PUT /api/prefs/reasoning_cache`), and
+               the three models it uses, which an admin sets for everyone
+               (`src/reasoning_cache/roles.py`). -->
+          <div class="admin-card" style="margin-bottom:12px;">
+            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;opacity:0.6"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Reasoning cache</h2>
+            <div class="admin-toggle-sub" style="margin-bottom:8px">
+              Keeps a finished scheduled run or Apollo goal run as code a small
+              model can rerun, so the next request of the same kind is answered
+              without the big model. Shadow checks each entry against the model
+              and never answers from it; Live lets an entry answer once it has
+              agreed with the model enough times in a row. Only read-only work is
+              kept. Off by default.
+            </div>
+            <div class="settings-col">
+              <div class="settings-row">
+                <label class="settings-label" for="set-rcMode">Your cache</label>
+                <select id="set-rcMode" class="settings-select settings-control-wide">
+                  <option value="off">Off</option>
+                  <option value="shadow">Shadow: learn and check, never answer</option>
+                  <option value="live">Live: answer from entries that earned it</option>
+                </select>
+              </div>
+              <div class="settings-row">
+                <label class="settings-label" for="set-rcBuilderEndpoint" title="turns a finished run into an entry; your strongest model, in the background">Builder endpoint</label>
+                <select id="set-rcBuilderEndpoint" class="settings-select settings-control-wide"><option value="">Same as utility</option></select>
+              </div>
+              <div class="settings-row">
+                <label class="settings-label" for="set-rcBuilderModel" title="turns a finished run into an entry; your strongest model, in the background">Builder model</label>
+                <select id="set-rcBuilderModel" class="settings-select settings-control-wide"><option value="">Same as utility</option></select>
+              </div>
+              <div class="settings-row">
+                <label class="settings-label" for="set-rcTargetEndpoint" title="reads a request's values and answers an entry's small calls; a small 1-4B model is enough">Target endpoint</label>
+                <select id="set-rcTargetEndpoint" class="settings-select settings-control-wide"><option value="">Same as utility</option></select>
+              </div>
+              <div class="settings-row">
+                <label class="settings-label" for="set-rcTargetModel" title="reads a request's values and answers an entry's small calls; a small 1-4B model is enough">Target model</label>
+                <select id="set-rcTargetModel" class="settings-select settings-control-wide"><option value="">Same as utility</option></select>
+              </div>
+              <div class="settings-row">
+                <label class="settings-label" for="set-rcJudgeEndpoint" title="the second opinion that must agree with the builder">Judge endpoint</label>
+                <select id="set-rcJudgeEndpoint" class="settings-select settings-control-wide"><option value="">Same as utility</option></select>
+              </div>
+              <div class="settings-row">
+                <label class="settings-label" for="set-rcJudgeModel" title="the second opinion that must agree with the builder">Judge model</label>
+                <select id="set-rcJudgeModel" class="settings-select settings-control-wide"><option value="">Same as utility</option></select>
+              </div>
+              <div class="settings-row">
+                <label class="settings-label" for="set-rcMatch">How close a request must be (70 to 100)</label>
+                <input type="number" id="set-rcMatch" class="settings-input" min="70" max="100" step="1" inputmode="numeric" style="max-width:96px;">
+              </div>
+              <div class="settings-row">
+                <label class="settings-label" for="set-rcAgreements">Agreements in a row before an entry goes live</label>
+                <input type="number" id="set-rcAgreements" class="settings-input" min="1" max="20" step="1" inputmode="numeric" style="max-width:96px;">
+              </div>
+              <div id="set-rcMsg" class="admin-toggle-sub" role="status" aria-live="polite"></div>
+            </div>
+          </div>
           <!-- H16. Three knobs read by a `while True` loop in app.py and absent
                from DEFAULT_SETTINGS, which is the allowlist the settings route
                iterates — so every save silently dropped them and the only

@@ -2164,6 +2164,45 @@ class ApolloGrantUse(Base):
     used_at  = Column(DateTime, nullable=False, default=utcnow_naive)
 
 
+class ReasoningCacheEntry(TimestampMixin, Base):
+    """One reasoning cache entry (`src/reasoning_cache`): a finished run kept
+    as code a small model can rerun for the next request of its kind.
+
+    Per person and per `scope` (a chat, an Apollo space, a scheduled task, a
+    hired agent), and never read outside both: one person's entry never answers
+    another, and an airgapped space's entries never leave it. `status` is
+    `shadow` (checked against the model, never served), `live` (served to a
+    person who chose Live) or `retired` (kept for the Cache page, never used).
+    `tools` are the read-only tools its code may call, and no others. A new
+    table (`create_all` is its migration)."""
+    __tablename__ = "reasoning_cache_entries"
+
+    id            = Column(String, primary_key=True)
+    owner         = Column(String, nullable=False, index=True)
+    scope         = Column(String, nullable=False, index=True)
+    applies_when  = Column(Text, nullable=False, default="")
+    request       = Column(Text, nullable=False, default="")
+    answer        = Column(Text, nullable=False, default="")
+    embedding     = Column(Text, nullable=False, default="[]")
+    parameters    = Column(Text, nullable=False, default="[]")
+    code          = Column(Text, nullable=False)
+    root          = Column(String, nullable=False, default="solve")
+    tools         = Column(Text, nullable=False, default="[]")
+    status        = Column(String, nullable=False, default="shadow")
+    agreements    = Column(Integer, nullable=False, default=0)
+    disagreements = Column(Integer, nullable=False, default=0)
+    served        = Column(Integer, nullable=False, default=0)
+    tokens_saved  = Column(Integer, nullable=False, default=0)
+    source_tokens = Column(Integer, nullable=False, default=0)
+    builder_model = Column(String, nullable=True)
+    retired_why   = Column(Text, nullable=True)
+    last_used_at  = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index('ix_reasoning_cache_owner_scope_status', 'owner', 'scope', 'status'),
+    )
+
+
 class ApolloVoice(Base):
     """Apollo's dials per person (phase 4, `src/apollo/voice.py`): warmth
     (terse to warm) and play (dry to playful), -2 to 2, the preset they came

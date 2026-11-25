@@ -6700,7 +6700,34 @@ class TaskScheduler:
             )[1:]
         except Exception:
             _task_fallbacks = []
-        async for event_str in stream_agent_loop(
+        # `B2241`. The reasoning cache consults the run and, when it finished
+        # cleanly and nothing answered it, learns from it: a scheduled run or
+        # an Apollo goal run is the same instructions with a new payload each
+        # time, which is what the cache is for. What the run was asked is every
+        # message after the system prompt (the time, what fired it, its
+        # slots, the prompt), so a trigger's payload is part of the match. A
+        # workflow step that may wait on a card, or replays one, sits it out.
+        from src.reasoning_cache import gate as _reasoning_cache
+        _cache_consult = bool(task.owner) and not (_may_wait or _exact_approval is not None)
+        _cache_scope, _cache_local = "task:", False
+        if _cache_consult:
+            def _cache_where_off_the_loop():
+                from core.database import SessionLocal
+                _cdb = SessionLocal()
+                try:
+                    return _reasoning_cache.run_scope(_cdb, task.owner, task.id,
+                                                      _slot.get("agent"))
+                finally:
+                    _cdb.close()
+            try:
+                _cache_scope, _cache_local = await asyncio.to_thread(_cache_where_off_the_loop)
+            except Exception as _cache_err:   # help, never a gate
+                logger.info("Reasoning cache sits run %s out: %s", run_id, _cache_err)
+                _cache_consult = False
+        _cache_request = "\n\n".join(
+            _reasoning_cache.latest_request([m]) for m in messages[1:]
+            if isinstance(m, dict) and m.get("role") == "user")
+        async for event_str in _reasoning_cache.around(stream_agent_loop(
             endpoint_url=endpoint_url,
             model=model,
             messages=messages,
@@ -6713,7 +6740,11 @@ class TaskScheduler:
             fallbacks=_task_fallbacks,
             workload=_workload,
             **_loop_extra,
-        ):
+        ), owner=task.owner, scope=_cache_scope, messages=messages, workload=_workload,
+                session_id=session_id, disabled_tools=disabled_tools,
+                untrusted_seen=bool(trigger_context_msg or context_msgs),
+                build_from=True, local_only=_cache_local, consult=_cache_consult,
+                request=_cache_request):
             if event_str.startswith("data: ") and not event_str.startswith("data: [DONE]"):
                 try:
                     data = json.loads(event_str[6:])

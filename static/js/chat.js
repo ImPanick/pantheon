@@ -5549,6 +5549,14 @@ import { FIRST_TOKEN_WAIT_FROM_MS, endsFirstTokenWait, firstTokenWaitText } from
                 renderAgentNote(document.getElementById('chat-history'), json);   // `B915`
                 uiModule.scrollHistory();
 
+              } else if (json.type === 'reasoning_cache') {
+                if (_isBg) continue;
+                // `B2241`. Said above the reply it gave, where a reload draws it.
+                const _rcBox = document.getElementById('chat-history');
+                const _rcNote = renderAgentNote(_rcBox, json);
+                if (_rcNote && holder && holder.parentNode === _rcBox) _rcBox.insertBefore(_rcNote, holder);
+                uiModule.scrollHistory();
+
               } else if (json.type === 'mcp_unavailable') {
                 if (_isBg) continue;
                 // `B1326`. A registered MCP server is down: said before the

@@ -903,6 +903,21 @@ DEFAULT_SETTINGS = {
     # `B2100`. Off: a built-in task that picked a model runs on it. On: the
     # Background Tasks model above runs every task, whatever it picked.
     "task_model_over_task_choice": False,
+    # `B2241`. The reasoning cache's three models (`src/reasoning_cache/roles.py`):
+    # the builder turns a finished run into an entry, the target pulls a
+    # request's values out and answers an entry's small calls, the judge is the
+    # second opinion. Empty falls back to Utility, then the default chat model.
+    # Whether the cache is on is each person's own (`PUT /api/prefs/reasoning_cache`).
+    "reasoning_cache_builder_endpoint_id": "",
+    "reasoning_cache_builder_model": "",
+    "reasoning_cache_target_endpoint_id": "",
+    "reasoning_cache_target_model": "",
+    "reasoning_cache_judge_endpoint_id": "",
+    "reasoning_cache_judge_model": "",
+    # How close a request must be to an entry's to consult it (cosine x 100),
+    # and how many shadow agreements in a row put an entry live.
+    "reasoning_cache_match_percent": 88,
+    "reasoning_cache_agreements": 3,
     "default_endpoint_id": "",
     "default_model": "",
     # Optional prose style used only for normal document writing/editing.
@@ -1266,6 +1281,9 @@ def int_setting_ranges() -> dict[str, tuple[int, int]]:
         # effective value are the same number.
         "skill_audit_hour": (0, 23),
         "skill_audit_batch": (1, 100),
+        # `B2241`. Below 70 unrelated requests match; 100 is an exact copy only.
+        "reasoning_cache_match_percent": (70, 100),
+        "reasoning_cache_agreements": (1, 20),
         # `P14-07`. The two ceilings on document indexing, in MiB. `0` is a
         # real answer on both — no ceiling — so the floor of the range is 0
         # and not 1. The tops are sanity, not policy: a 4 GiB single file

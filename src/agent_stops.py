@@ -414,9 +414,12 @@ def fabricated_retrieval_stop(
 #: `B1326` added `mcp_unavailable`: a registered MCP server that is not
 #: answering, said once in the chat the person is in — the model was told in
 #: its prompt (`B1307`) and Settings always knew, and the chat said nothing.
+#: `B2241` added `reasoning_cache`: a reply the reasoning cache gave in the
+#: model's place, said beside it, live and after a reload, with what each step
+#: of the entry did (`src/reasoning_cache/gate.py`).
 AGENT_NOTE_TYPES = ("rounds_exhausted", "budget_exceeded", "teacher_takeover",
                     "skill_saved", "escalation_failed", "skill_save_failed",
-                    "compacted", "mcp_unavailable")
+                    "compacted", "mcp_unavailable", "reasoning_cache")
 
 
 def _positive_round(value: Any) -> Optional[int]:
