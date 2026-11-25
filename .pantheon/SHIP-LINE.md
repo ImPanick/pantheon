@@ -383,7 +383,10 @@ Re-measured 2026-11-07, after the eightieth wave, the audit of what Odysseus fix
 
 **Direction as of 2026-11-07, after the eightieth wave: the open count is rising, mostly by rows built and claimed until the owner has tested them, and no gate stands.**
 
-Re-measured 2026-11-24, after the four waves of the owner's ruling that day (`D-2026-11-24-01` to `-04`): **147 filed, 245 closed**, open **313 → 215**, falling. The window now starts at the wave before 2026-11-11, when 177 rows were closed on CI evidence, so that closure sits inside it; the four waves themselves filed 41 rows and closed 37. The ship-line composition is 0 of the last 40 `B` rows (`B2151`–`B2220`).
+Re-measured 2026-11-24, after the dependency-update wave: **140 filed, 239 closed**, open **313 → 214**, falling. The window now starts at the wave before 2026-11-11, when 177 rows were closed on CI evidence, so that closure sits inside it.
+
+**Direction as of 2026-11-24, after the dependency-update wave: the open count is falling.**
+Re-measured 2026-11-24, after the four waves of the owner's ruling that day (`D-2026-11-24-01` to `-04`): **81 filed, 246 closed**, open **380 → 215**, falling. The window now starts at the wave before 2026-11-11, when 177 rows were closed on CI evidence, so that closure sits inside it; the four waves themselves filed 41 rows and closed 37. The ship-line composition is 0 of the last 40 `B` rows (`B2151`–`B2220`).
 
 **Direction as of 2026-11-24, after the four cleanup waves: the open count is falling.**
 
