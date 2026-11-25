@@ -21,9 +21,9 @@ ROSTER = {"agent-mail": "Inbox Keeper"}
 
 @pytest.fixture
 def ada(apollo_db, tmp_path, monkeypatch):
-    def pick(owner, text, **k):
-        return {"id": "agent-mail", "name": "Inbox Keeper"} if "mail" in text.lower() else None
-    monkeypatch.setattr("src.apollo.lead.pick_lead", pick)
+    def write(owner, task_id, *, title, **k):
+        return SimpleNamespace(id="agent-mail") if "mail" in title.lower() else None
+    monkeypatch.setattr("src.apollo.goal_lead.write", write)
     monkeypatch.setattr("src.agents.catalogue.get_agent",
                         lambda owner, aid: SimpleNamespace(name=ROSTER[aid]) if aid in ROSTER else None)
     manager = signed_in(monkeypatch, tmp_path / "auth")

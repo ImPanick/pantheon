@@ -1,14 +1,17 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Which roster agent leads a goal (settled calls 6 and 8).
+"""Which saved agents fit a goal (settled calls 6 and 8).
 
-Apollo hands each goal to a lead agent who owns the outcome. The pick uses the
+A goal's lead is written for that goal (`goal_lead.py`, owner's direction
+2026-11-24); the saved agent that fits it best is named in that lead's runbook
+as the teammate to hand to, and `candidates` answers the fleet tool's
+`roster`. The pick uses the
 hall's own matching (`src.agents.suggest.score`: the goal's words against each
 agent's name, tagline and section) and then the fit badge for the model the
 work would run on (`src.agents.fit`). An agent measured as *Needs a bigger
 model* is never picked; *Runs well* beats *Not measured* on an even score.
 
-No match is an answer too: the roster has a gap, and Apollo says so rather than
-staffing the goal with a guess (phase 5 drafts the missing agent).
+No match is an answer too: the written lead works the goal without a saved
+teammate, and the fleet tool can propose the missing one (`gaps.py`).
 """
 
 from __future__ import annotations

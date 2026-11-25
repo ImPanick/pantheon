@@ -20,8 +20,8 @@ def apollo_as(apollo_db, tmp_path, monkeypatch):
     from src.memory import MemoryManager
     (tmp_path / "brain").mkdir()
     monkeypatch.setattr(knows, "_manager", MemoryManager(str(tmp_path / "brain")))
-    # No roster in a test: every goal is led by Apollo itself.
-    monkeypatch.setattr("src.apollo.lead.pick_lead", lambda owner, text, **k: None)
+    # No lead is written in a test: every goal is led by Apollo itself.
+    monkeypatch.setattr("src.apollo.goal_lead.write", lambda *a, **k: None)
     manager = signed_in(monkeypatch, tmp_path / "auth")
     import routes.apollo_routes as apollo_routes
 

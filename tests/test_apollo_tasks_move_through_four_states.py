@@ -3,8 +3,8 @@
 
 A task waits on the person only with the one question it needs answered; the
 answer sends it back to work, kept as its next step for the lead. The pane's
-header reads what Apollo is doing from these states. With no roster agent to
-lead a goal the task is still made, and says the roster has a gap.
+header reads what Apollo is doing from these states. When no lead can be
+written for a goal the task is still made, and says Apollo leads it.
 """
 import pytest
 
@@ -23,11 +23,11 @@ def test_a_new_task_is_working_and_led_by_the_roster_pick(apollo_db):
     assert t.started_by == "person"
 
 
-def test_with_no_fit_the_task_is_made_and_says_the_roster_has_a_gap(apollo_db):
+def test_with_no_lead_the_task_is_made_and_apollo_leads_it(apollo_db):
     db = apollo_db()
     t = T.create(db, "ada", title="Something nobody does", pick=NO_FIT)
     assert t.lead_agent is None
-    assert "No agent in the roster fits" in t.next_step
+    assert "Apollo leads it" in t.next_step
 
 
 def test_needs_you_needs_its_one_question(apollo_db):
