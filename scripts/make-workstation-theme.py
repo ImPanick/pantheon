@@ -6,7 +6,7 @@ cockpit's own colours (`D-2026-10-31-02`).
 
 The workstation's desktop is XFCE (`workstation/provision.sh`). What makes it
 look like Pantheon rather than stock XFCE is drawn here, from the five tokens
-of the default theme (`static/js/theme.js`, THEMES.dark, "Original") mixed the
+of the default theme (`static/js/theme.js`, THEMES.pantheon, "Pantheon") mixed the
 way `static/cockpit.css` mixes them, so a change of the cockpit's palette is a
 change of one table below and one run of this script:
 
@@ -43,10 +43,11 @@ ROOT = Path(__file__).resolve().parent.parent
 DESKTOP = ROOT / "workstation" / "desktop"
 XFWM4 = DESKTOP / "themes" / "Pantheon" / "xfwm4"
 
-# THEMES.dark in static/js/theme.js ("Original"), the cockpit's default.
+# THEMES.pantheon in static/js/theme.js ("Pantheon", the getpantheon.ai look),
+# the cockpit's default since 2026-11-24 (before it, THEMES.dark, "Original").
 # `tests/test_the_workstation_desktop_looks_like_pantheon.py` holds the two equal.
-TOKENS = {"bg": "#282c34", "fg": "#9cdef2", "panel": "#111111", "border": "#355a66",
-          "red": "#e06c75"}
+TOKENS = {"bg": "#06080e", "fg": "#eaedf4", "panel": "#0f1420", "border": "#2a3142",
+          "red": "#f3b23f"}
 # style.css `--color-muted`, dark arm: the pivot `--fg-muted` is mixed toward.
 COLOR_MUTED = "#949494"
 
@@ -112,6 +113,12 @@ def blend(under: RGB, over: RGB, alpha: float) -> RGB:
 WHITE, BLACK = (1.0, 1.0, 1.0), (0.0, 0.0, 0.0)
 
 
+def _luma(c: RGB) -> float:
+    """WCAG relative luminance."""
+    r, g, b = (_lin(v) for v in c)
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
 def palette() -> Dict[str, RGB]:
     """The cockpit's derived colours (`static/cockpit.css`, dark tone)."""
     bg, fg, panel, border, red = (hex_rgb(TOKENS[k]) for k in ("bg", "fg", "panel", "border", "red"))
@@ -134,7 +141,8 @@ def palette() -> Dict[str, RGB]:
         "tint_down": mix(glass, fg, 0.20),
         "close": red,
         "close_down": mix(red, BLACK, 0.18),
-        "on_accent": WHITE,                               # --ck-on-accent
+        # --ck-on-accent: the ink that reads on the accent (gold takes dark ink).
+        "on_accent": BLACK if _luma(red) > 0.4 else WHITE,
     }
     p["glyph"] = p["text_2"]
     p["glyph_off"] = mix(fg_muted, p["title_off"], 0.45)
