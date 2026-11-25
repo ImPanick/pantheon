@@ -559,6 +559,17 @@ html.cockpit .msg .body li::marker { color: var(--ck-text-3); }
 html.cockpit .msg .body h1, html.cockpit .msg .body h2, html.cockpit .msg .body h3 { font-family: var(--ck-font-ui); font-weight: 600; letter-spacing: -.01em; margin: 18px 0 8px; color: var(--ck-text); }
 html.cockpit .msg .body h1 { font-family: var(--ck-font-display); font-weight: 400; font-size: 28px; }
 html.cockpit .msg .body h2 { font-size: 17px; } html.cockpit .msg .body h3 { font-size: 15px; }
+/* Emphasis in a reply. style.css paints bold, italics and bold italics in the
+   syntax hues (--hl-*), which deriveSyntaxColors() spreads as far from the
+   accent as it can: on gold that lands on teal and pink, so one answer wore
+   three accents. The owner, 2026-11-25: "the colors are CLASHING massively.
+   Make them actually tasteful", then "Ensure all other themes follow suite".
+   Emphasis is weight and slant in the reply's own ink, on every palette. */
+html.cockpit .msg .body :is(h4, h5, h6) { color: var(--ck-text); }
+html.cockpit .msg .body :is(strong, b) { color: inherit; font-weight: 650; }
+html.cockpit .msg .body :is(em, i),
+html.cockpit .msg .body :is(strong, b) :is(em, i),
+html.cockpit .msg .body :is(em, i) :is(strong, b) { color: inherit; }
 html.cockpit .msg .body hr { border: 0; height: 1px; background: var(--ck-edge-lo); margin: 16px 0; }
 /* actions wait under the turn until it is pointed at */
 html.cockpit .msg-footer { margin-top: 6px; opacity: 0; transition: opacity var(--ck-t) var(--ck-ease); }
