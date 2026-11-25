@@ -4275,3 +4275,42 @@ Each ruling below is his, in his words where they are short.
    CI"*).
 9. **Code-scanning alerts** `#526`, `#528`, `#530`, `#531` and `#536` are false
    positives to dismiss. *"Dismiss false-positives."*
+
+## D-2026-11-24-04 — every non-Python dependency to its newest release, Dependabot onto `dev`, branch protection on `main` only
+
+The owner (Panick), 2026-11-24, verbatim: *"Branch protection. only on main.
+No dead code but we dont delete.. we wire it in where it's unwired and loop
+make the systems work. If its truly, no shit dead code.. We can remove it.
+Delete duplicates but ensure anything that is deleted is \*truly\* unused. Need
+all dependencies at the newest version and the platform made compatible with
+current and future updates.. etc.. Re-audit as needed prior to performing
+work.. There's been a lot of changes since then."*
+
+This entry records what that ruling did to the non-Python dependencies
+(`B2210`–`B2220`). Python dependencies, duplicates and dead code are recorded
+by the other workers of the same day.
+
+1. **Holds it overrides.** `D-2026-10-29-02` §4 (docx stays on 9.7.1) and §5
+   (Mermaid stays on 11.x), and the holds filed under them — `B423`, `B424`'s
+   `behind_ok`, `B1673` — and `B425`'s Pyodide `stable-0.27` line. Each was a
+   "measure first" hold; each library was measured here before it moved, and
+   the measurement is in its row: docx 9.16.0 (`B2219`), Mermaid 12.3.0 with
+   `layout: 'dagre'` and `look: 'classic'` named so existing diagrams resolve
+   as they did (`B2220`), Pyodide 314.0.8 with `enableRunUntilComplete` named
+   (`B2215`). KaTeX 0.19.1 (`B2217`), Swagger UI 5.36.0 (`B2218`), DOMPurify
+   3.5.0 and mammoth 1.13.0 (`B2216`) had no hold.
+2. **Branch protection is `main` only** (`B2212`). `docs/security-ci.md` §1
+   names twelve required checks, a pull request with no required approvals and
+   no Code Owners review, admins not enforced, no force pushes or deletions,
+   and no rule for `dev`. The settings themselves are the owner's to apply.
+3. **Dependabot opens against `dev`** (`B2210`), and the weekly
+   *Vendored freshness* job reads `dev` on its schedule.
+4. **Held on purpose, each for a measured reason** (`B2214`): Rocky Linux stays
+   on 9 (KasmVNC publishes no EL10 build, and Rocky 10 needs x86-64-v3); the
+   SearXNG image stays where it is until it can be booted; scrcpy stays on
+   3.3.4, because `control.py` speaks that release's wire protocol and the
+   change needs a phone to check.
+5. **Open for the owner.** elkjs, now inside `mermaid.min.js`, is offered as
+   EPL-2.0 OR GPL-3.0-or-later; which offer Pantheon takes is not decided here
+   (CREDITS *Licence scope*). SheetJS could not be re-checked from this
+   environment (its CDN is unreachable); it is recorded at 0.20.3.

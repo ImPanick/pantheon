@@ -62,8 +62,10 @@ EXPECTED_0_10_2 = {
     "regenerator-runtime", "rgbcolor", "stackblur-canvas", "svg-pathdata",
 }
 
-# What docx 9.7.1's build names (`B424`), derived from the shipped bytes.
-DOCX_EXPECTED = {
+# What docx 9.7.1's build named (`B424`), derived from the bytes shipped until
+# 2026-11-24. Kept as the record of what has to stay attributed: every tag up
+# to `B2219` ships these.
+DOCX_9_7_1 = {
     "available-typed-arrays", "base64-js", "buffer", "call-bind",
     "call-bind-apply-helpers", "call-bound", "define-data-property",
     "dunder-proto", "es-define-property", "es-errors", "es-object-atoms",
@@ -76,6 +78,10 @@ DOCX_EXPECTED = {
     "stream-browserify", "string_decoder", "util", "util-deprecate",
     "vite-plugin-node-polyfills", "which-typed-array", "xml", "xml-js",
 }
+
+# What docx 9.16.0's build names (`B2219`): it zips with `fflate` and dropped
+# JSZip, its XML libraries and every Node polyfill.
+DOCX_EXPECTED = {"fflate", "nanoid"}
 
 # package -> the licence text that has to travel with it.
 TEXTS = {
@@ -123,12 +129,13 @@ def test_the_docx_package_list_is_readable_from_the_bundle():
     }
 
 
-@pytest.mark.parametrize("pkg", sorted(DOCX_EXPECTED))
+@pytest.mark.parametrize("pkg", sorted(DOCX_9_7_1 | DOCX_EXPECTED))
 def test_every_package_inside_docx_has_an_entry_a_text_and_a_credits_row(pkg):
-    """`B424`'s `Verify:` — rule 7 finds every package in docx 9.7.1 declared,
+    """`B424`'s `Verify:` — rule 7 finds every package in docx declared,
     asserted here per package so a failure names it. The entry's text is on
     disk, names a holder, and is linked from a `CREDITS.md` row that names the
-    package."""
+    package. 9.7.1's packages stay in the list after `B2219`: their bytes are
+    in every tag up to it."""
     mod = _licences()
     owners = [e for e in mod.INVENTORY if pkg in e.bundled]
     assert owners, f"{pkg} ships inside docx.umd.min.js and no Entry declares it"
@@ -139,19 +146,26 @@ def test_every_package_inside_docx_has_an_entry_a_text_and_a_credits_row(pkg):
     assert any(f"[{pkg}]" in ln for ln in lines), (pkg, lines)
 
 
-@pytest.mark.parametrize("pkg", ["lie", "immediate", "setimmediate", "process"])
-def test_what_docx_carries_inside_files_it_took_whole_is_declared_too(pkg):
-    """Rule 7 cannot open these: JSZip's own browserify build inside docx
-    carries `lie`, `immediate` and `setimmediate` (its module map names them),
-    and vite-plugin-node-polyfills' prebuilt `process` shim is `process`'s
-    `browser.js`. Read off the bytes by hand on 2026-10-29 and declared the
-    same way."""
-    mod = _licences()
-    assert any(pkg in e.bundled for e in mod.INVENTORY), pkg
+DOCX_LEFT = (DOCX_9_7_1 - DOCX_EXPECTED) | {"lie", "immediate", "setimmediate", "process"}
+
+
+@pytest.mark.parametrize("pkg", sorted(DOCX_LEFT))
+def test_a_package_that_left_docx_keeps_its_text_and_says_when(pkg):
+    """`B2219`, the `MAMMOTH_LEFT` rule for docx. Forty-four of 9.7.1's
+    derived packages, and the four it carried inside files it took whole
+    (JSZip's `lie`, `immediate` and `setimmediate`, and the `process` shim), are
+    not in 9.16.0. Each keeps its entry, its text and its row, and the row says
+    which docx it was last inside."""
     blob = DOCX.read_bytes().decode("utf-8", "replace")
+    assert pkg not in bundled(DOCX), f"{pkg} is back inside docx"
     marker = {"lie": 'e("lie")', "immediate": 'e("immediate")',
-              "setimmediate": 'e("setimmediate")', "process": "cachedSetTimeout"}[pkg]
-    assert marker in blob, (pkg, marker)
+              "setimmediate": 'e("setimmediate")', "process": "cachedSetTimeout"}.get(pkg)
+    if marker:
+        assert marker not in blob, (pkg, marker)
+    owners = [e for e in _licences().INVENTORY if pkg in e.bundled]
+    assert owners and (ROOT / "licenses" / owners[0].text).is_file(), pkg
+    rows = [ln for ln in _credit_lines(owners[0].text) if f"[{pkg}]" in ln]
+    assert any("through docx 9.7.1" in ln for ln in rows), rows
 
 
 # --- B1959: what mammoth carries -------------------------------------------
@@ -182,9 +196,11 @@ def _browserify_packages(path):
     return found
 
 
-# What mammoth 1.12.3's module maps name, read from the shipped bytes.
+# What mammoth 1.13.0's module maps name, read from the shipped bytes.
+# `B2216`: `bluebird` left with 1.13.0 ("Replace the use of bluebird with
+# native promises", mammoth's NEWS), so seventeen; its text stays (`MAMMOTH_LEFT`).
 MAMMOTH_EXPECTED = {
-    "@xmldom/xmldom", "base64-js", "bluebird", "buffer", "dingbat-to-unicode",
+    "@xmldom/xmldom", "base64-js", "buffer", "dingbat-to-unicode",
     "ieee754", "immediate", "isarray", "jszip", "lie", "lop", "option", "pako",
     "process", "readable-stream", "set-immediate-shim", "underscore",
     "xmlbuilder",
@@ -196,8 +212,23 @@ _GRANTS = {"MIT": "Permission is hereby granted, free of charge",
            "BSD": "Redistribution and use in source and binary forms"}
 
 
+MAMMOTH_LEFT = {"bluebird"}
+
+
+@pytest.mark.parametrize("pkg", sorted(MAMMOTH_LEFT))
+def test_a_package_that_left_mammoth_keeps_its_text_and_says_when(pkg):
+    """`Law 1` applied to paperwork, as for the html2pdf packages below: every
+    tag up to this bump ships `bluebird` inside mammoth 1.12.3, so its text and
+    row stay, and the row says which mammoth it was last inside."""
+    assert pkg not in _browserify_packages(MAMMOTH), f"{pkg} is back inside mammoth"
+    owners = [e for e in _licences().INVENTORY if pkg in e.bundled]
+    assert owners and (ROOT / "licenses" / owners[0].text).is_file(), pkg
+    rows = [ln for ln in _credit_lines(owners[0].text) if f"[{pkg}]" in ln]
+    assert any("1.12.3" in ln and "mammoth" in ln for ln in rows), rows
+
+
 def test_what_mammoth_carries_is_read_from_its_module_maps_and_declared():
-    """Eighteen packages, read out of the bytes and written down, so a mammoth
+    """Seventeen packages (eighteen before 1.13.0), read out of the bytes and written down, so a mammoth
     bump that changes them says which. Before `B1959`, nine of them were
     declared by no Entry and had no notice anywhere."""
     found = _browserify_packages(MAMMOTH)
@@ -322,7 +353,7 @@ def test_the_bundle_and_its_one_string_deviation_are_history_now():
 @pytest.mark.parametrize("file,marker,credited", [
     ("jspdf.umd.min.js", "Version 4.2.1", "jsPDF](https://github.com/parallax/jsPDF) v4.2.1"),
     ("html2canvas.min.js", "html2canvas 1.4.1", "html2canvas](https://github.com/niklasvh/html2canvas) v1.4.1"),
-    ("purify.min.js", "DOMPurify 3.4.17", "DOMPurify](https://github.com/cure53/DOMPurify) v3.4.17"),
+    ("purify.min.js", "DOMPurify 3.5.0", "DOMPurify](https://github.com/cure53/DOMPurify) v3.5.0"),
 ])
 def test_the_pdf_files_carry_the_versions_credits_claims(file, marker, credited):
     """`B421`. Each of the three files states its own release in its banner, so
@@ -337,10 +368,12 @@ def test_the_pdf_files_carry_the_versions_credits_claims(file, marker, credited)
 MERMAID = ROOT / "static" / "lib" / "mermaid.min.js"
 # pnpm writes the version into the module path, so these are read out of the
 # shipped bytes rather than looked up.
+# `B2220`: Mermaid 12.3.0 moved them (8.2.0 / 3.17.5 / 3.17.5 in 11.17.2); the
+# three still ship the same Microsoft MIT text, compared byte for byte.
 VSCODE = {
-    "vscode-jsonrpc": "8.2.0",
-    "vscode-languageserver-protocol": "3.17.5",
-    "vscode-languageserver-types": "3.17.5",
+    "vscode-jsonrpc": "9.0.3",
+    "vscode-languageserver-protocol": "3.18.4",
+    "vscode-languageserver-types": "3.18.4",
 }
 _PNPM = re.compile(r'node_modules/\.pnpm/([^/"@]+)@([\d][^/"_]*)(?:_[^/"]*)?/node_modules/')
 
@@ -389,8 +422,10 @@ def test_the_bundle_list_is_derived_and_not_written_down():
     found = mod.discover_bundles(mod.tracked())
     # `B421` took the html2pdf bundle out and `B424` brought docx 9.7.1's
     # Vite build in, which names its modules; the derivation noticed both.
+    # `B2219`: docx 9.16.0 names two packages, under the three that make a
+    # file a bundle by count alone — its entry declares it `derived`, and rule
+    # 8 reads its per-module markers instead.
     assert set(found) == {
-        "static/lib/docx.umd.min.js",
         "static/lib/mermaid.min.js",
     }, sorted(found)
 
@@ -611,6 +646,21 @@ def test_rule_8_fails_when_a_bundles_contents_stop_being_readable(repo):
     assert r.returncode == 1, r.stdout
     assert "NOT DERIVED" in r.stdout, r.stdout
     assert "docx.umd.min.js" in r.stdout, r.stdout
+
+
+def test_rule_8_reads_a_bundle_by_its_module_markers_not_its_package_count(repo):
+    """`B2219`. docx 9.16.0 marks 368 modules and takes two packages; rule 8
+    counted packages alone and called it a bundle whose paths were stripped.
+    The markers are what a stripped build loses, so they are what is counted
+    now — and a build that keeps its `// src/` markers but loses every
+    `node_modules/` path still fails, because then nothing names a package."""
+    target = repo / "static" / "lib" / "docx.umd.min.js"
+    blob = target.read_text(encoding="utf-8", errors="replace")
+    assert len(re.findall(r"(?m)^\s*// src/", blob)) >= 3
+    target.write_text(blob.replace("node_modules/", "vendor/"), encoding="utf-8")
+    r = check(repo)
+    assert r.returncode == 1, r.stdout
+    assert "NOT DERIVED" in r.stdout and "docx.umd.min.js" in r.stdout, r.stdout
 
 
 def test_rule_8_fails_when_a_vendored_script_answers_nothing(repo):

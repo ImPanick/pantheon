@@ -95,6 +95,11 @@ const CASES = [
   // Not valid at any version: this is the one that has to come back as an
   // error span rather than as a thrown exception.
   ['broken', '\\frac{', false],
+  // `B2217`. A character no KaTeX font has metrics for. 0.19.0's one breaking
+  // change routes this through `strict` (code `symbolNotInFont`), so under
+  // `strict: 'error'` it would become an error; under the call site's options
+  // (no `strict`, so KaTeX's default `'warn'`) it must still typeset.
+  ['noMetrics', '\\text{\u{A66E}} + \u{A66E}', false],
 ];
 
 for (const [name, tex, displayMode] of CASES) {
@@ -113,5 +118,19 @@ for (const [name, tex, displayMode] of CASES) {
     out.render[name] = { threw: String((e && e.message) || e).slice(0, 160) };
   }
 }
+
+// Which `strict` codes KaTeX raises for the no-metrics case. 0.18.x warned on
+// the console outside `strict` and raised only `unknownSymbol`; 0.19.0 raises
+// `symbolNotInFont` too, so this list is the version's own fingerprint of the
+// change the call site has to tolerate.
+const strictCodes = [];
+try {
+  katex.renderToString('\\text{\u{A66E}}', Object.assign({}, options(false), {
+    strict: (code) => { strictCodes.push(code); return 'ignore'; },
+  }));
+} catch (e) {
+  strictCodes.push('threw: ' + String((e && e.message) || e).slice(0, 80));
+}
+out.strictCodes = strictCodes;
 
 console.log(JSON.stringify(out));

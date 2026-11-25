@@ -75,12 +75,23 @@ export function documentScheme(doc) {
  * `renderMermaid`; `securityLevel: 'loose'` because labels are rendered as
  * HTML (which is why `workflowDiagram.js:mermaidText` escapes `<` and `>`).
  * Both were already in the call this replaces and neither changes here.
+ *
+ * `layout: 'dagre'` and `look: 'classic'` are `B2220`. Mermaid 12.0 made ELK
+ * the default layout for seven diagram types and `neo` the default look (with
+ * `redux-color` the default theme) for ten. Both were 11.x's defaults, so
+ * naming them keeps every diagram a person already has laid out and drawn as
+ * it was. Mermaid 12 resolves these keys front matter first, then
+ * `initialize()`, then each diagram type's own default, so a value here beats
+ * the type defaults and a diagram that asks for `elk` in its front matter
+ * still gets it.
  */
 export function mermaidConfig(scheme, themeVariables) {
   const config = {
     startOnLoad: false,
     theme: mermaidTheme(scheme),
     securityLevel: 'loose',
+    layout: 'dagre',
+    look: 'classic',
   };
   if (themeVariables && Object.keys(themeVariables).length) {
     config.themeVariables = { ...themeVariables };

@@ -180,11 +180,15 @@ def test_loaded_as_a_script_it_publishes_docx_and_leaks_no_node_shim():
     browser branch — not the `require` branch the tests above drive. 9.7.1's
     build carries vite-plugin-node-polyfills' `global` and `process` shims and
     a `Buffer`; run as a classic script in a bare global, it publishes
-    `docx` and nothing of those. `setImmediate`/`clearImmediate` are JSZip's
-    `setimmediate` polyfill, which 8.5.0 installed too (measured the same
-    way). Driven in Chromium as well on 2026-10-29: *Export as Word* on 9.7.1
-    downloads a `.docx` whose text is the document's, with `window.process`,
-    `window.global` and `window.Buffer` still undefined after it."""
+    `docx` and nothing of those. Driven in Chromium as well on 2026-10-29:
+    *Export as Word* on 9.7.1 downloads a `.docx` whose text is the
+    document's, with `window.process`, `window.global` and `window.Buffer`
+    still undefined after it.
+
+    `B2219`, docx 9.16.0: **fails on 9.7.1 and 8.5.0**, which both also
+    installed `setImmediate`/`clearImmediate` on the page (JSZip's
+    `setimmediate` polyfill). 9.16 zips with `fflate` instead of JSZip and
+    dropped the Node polyfills, so the page gains `docx` and nothing else."""
     script = (
         "const vm = require('vm'), fs = require('fs');\n"
         "const ctx = {}; ctx.window = ctx; ctx.self = ctx; vm.createContext(ctx);\n"
@@ -198,5 +202,5 @@ def test_loaded_as_a_script_it_publishes_docx_and_leaks_no_node_shim():
     proc = subprocess.run(["node", "-e", script], capture_output=True, text=True, timeout=60)
     assert proc.returncode == 0, proc.stderr
     got = json.loads(proc.stdout.strip().splitlines()[-1])
-    assert got["added"] == ["clearImmediate", "docx", "setImmediate"], got
+    assert got["added"] == ["docx"], got
     assert got["api"] == ["Document", "Packer", "Paragraph", "TextRun", "HeadingLevel"], got
