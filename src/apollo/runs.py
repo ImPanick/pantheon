@@ -73,6 +73,78 @@ def inputs_for(manifest, task) -> Dict[str, Any]:
     return out
 
 
+def apollos_model(db, owner: str, task) -> Tuple[Optional[str], Optional[str]]:
+    """The endpoint and model Apollo talks on in the goal's chat (its space's,
+    or Apollo's own), or `(None, None)`.
+
+    The owner's test, 2026-11-25: a goal set up and started never reached the
+    model ("pressing go doesn't start the LLM on the goal"). A lead's run named
+    no model, so it took the scheduled-work chain (Settings → *Model for
+    scheduled tasks*, then Utility, then the default chat model), and on an
+    install where none of those is set the run stopped at "No model yet" while
+    Apollo itself was talking on a local model the whole time. A goal now runs
+    on the model Apollo is on.
+    """
+    try:
+        from core.database import Session as DbSession
+        from src.apollo import spaces as S
+        sid = S.chat_for(db, owner, task.space_id or None)
+        sess = db.query(DbSession).filter(DbSession.id == sid, DbSession.owner == owner).first()
+    except Exception:
+        return None, None
+    url = (getattr(sess, "endpoint_url", "") or "").strip()
+    model = (getattr(sess, "model", "") or "").strip()
+    return (url, model) if url and model else (None, None)
+
+
+def _run_on(first, task, url: Optional[str], model: Optional[str]) -> None:
+    """Put the goal's model on its lead's run. A lead Apollo wrote for the goal
+    follows Apollo's model; a saved agent's run keeps a model it already names."""
+    from src.apollo.goal_lead import is_goal_lead
+    if not (url and model) or first is None:
+        return
+    if is_goal_lead(task.lead_agent) or not (first.endpoint_url and first.model):
+        first.endpoint_url = url
+        first.model = model
+
+
+def report_failed(db, scheduled_task_id: Optional[str], why: str, *,
+                  post: Optional[Callable[[str, str, Dict[str, Any]], None]] = None) -> Optional[str]:
+    """A lead's run stopped before it reported. The goal says so and waits on
+    the person, instead of reading Working with nothing happening (owner's test,
+    2026-11-25). Returns the line said in Apollo's chat, or `None` for a run
+    that is not an Apollo goal's."""
+    from src.agents import hires as H
+    hire = H.hire_for_task(db, scheduled_task_id)
+    task = apollo_task_for_hire(db, getattr(hire, "id", None))
+    if task is None or task.state == "done":
+        return None
+    reason = _first_line(why, 200) or "It stopped before it said why."
+    T.set_state(task, "needs_you", question=f"The lead's run stopped: {reason} Run it again?",
+                next_step=None)
+    db.commit()
+    line = f"“{task.title}” needs you: the lead's run stopped. {reason}"
+    if post is not None:
+        try:
+            post(task.owner, line, {"apollo_task": task.id, "kind": "run_failed"})
+        except Exception:
+            logger.warning("Could not say in Apollo's chat that %s's run stopped", task.id, exc_info=True)
+    return line
+
+
+NOT_STARTED = "The lead's run couldn't start. Run it again?"
+
+
+def did_not_start(db, owner: str, task_id: Any):
+    """The lead's run was asked for and the scheduler didn't take it. The goal
+    waits on the person rather than reading Working with no run behind it."""
+    task = T.get(db, owner, task_id)
+    if task.state == "working":
+        T.set_state(task, "needs_you", question=NOT_STARTED, next_step=None)
+        db.commit()
+    return task
+
+
 def apollo_task_for_hire(db, hire_id: Optional[str]):
     if not hire_id:
         return None
@@ -93,6 +165,9 @@ def prepare(db, owner: str, task, *, endpoint_url: Optional[str] = None,
         raise ApolloRefused("That task is done. Start a new one to do more.", 409)
     if not task.lead_agent:
         raise ApolloRefused("No agent leads this yet. Pick a lead from your roster first.", 409)
+    chat_url, chat_model = apollos_model(db, owner, task)
+    if endpoint_url is None:
+        endpoint_url = chat_url       # the model the run will be on (see `_run_on`)
     if endpoint_url is None:
         try:
             from src.task_endpoint import resolve_task_endpoint
@@ -144,6 +219,7 @@ def prepare(db, owner: str, task, *, endpoint_url: Optional[str] = None,
     first = db.query(ScheduledTask).filter(ScheduledTask.id == ids[0]).first()
     if first is not None:
         first.prompt = APOLLO_TASK_PROMPT
+        _run_on(first, task, chat_url, chat_model)
     T.set_state(task, "working", next_step=f"{manifest.name} is on it.")
     db.flush()
     return ids[0], ""

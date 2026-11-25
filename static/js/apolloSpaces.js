@@ -133,8 +133,11 @@ function _lock() {
 }
 
 /** The switcher: a button naming where Apollo is, opening a menu of spaces
- *  and a line to make a new one. Returns `{ el, destroy }`. */
-export function createSwitcher() {
+ *  and a line to make a new one. Returns `{ el, destroy }`. `topLabel` names
+ *  the top layer where "Apollo" would say the name twice: Apollo's own bar
+ *  already says it beside the switcher (owner's test, 2026-11-25). */
+export function createSwitcher({ topLabel = null } = {}) {
+  const top = topLabel || M.spaceLabel(null);
   const el = _el('div', 'apo-space');
   const btn = _el('button', 'apo-space-b');
   btn.type = 'button';
@@ -150,9 +153,10 @@ export function createSwitcher() {
     btn.textContent = '';
     const row = currentRow();
     if (row && row.sealed) btn.appendChild(_lock());
-    btn.appendChild(_el('span', 'apo-space-name', M.spaceLabel(row)));
+    const words = row ? M.spaceLabel(row) : top;
+    btn.appendChild(_el('span', 'apo-space-name', words));
     btn.appendChild(_el('span', 'apo-space-caret', '▾'));
-    btn.setAttribute('aria-label', `Space: ${M.spaceLabel(row)}. Change space`);
+    btn.setAttribute('aria-label', `Space: ${words}. Change space`);
   }
 
   function close() {
@@ -173,7 +177,7 @@ export function createSwitcher() {
 
   function draw() {
     menu.textContent = '';
-    menu.appendChild(item('Apollo', null, 0, false));
+    menu.appendChild(item(top, null, 0, false));
     for (const s of _spaces) menu.appendChild(item(s.name, s.id, s.depth + 1, s.sealed));
     const form = _el('form', 'apo-space-new');
     const input = _el('input', 'apo-input');
