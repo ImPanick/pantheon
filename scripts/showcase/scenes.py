@@ -216,7 +216,10 @@ class Studio:
             is_mobile=phone, has_touch=phone, locale="en-US",
             color_scheme="light" if theme == "light" else "dark",
             service_workers="block", reduced_motion="no-preference")
-        theme_pref = "" if default else json.dumps({"name": theme, "colors": self.colours[theme]})
+        pref = {"name": theme, "colors": self.colours[theme]}
+        if self.classic:
+            pref["finish"] = "glass"  # every theme opens in hairline now; the before is glass
+        theme_pref = "" if default else json.dumps(pref)
         ctx.add_init_script(
             "try{"
             + ("localStorage.removeItem('pantheon-theme');" if default else
