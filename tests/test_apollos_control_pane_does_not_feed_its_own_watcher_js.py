@@ -163,6 +163,45 @@ def test_on_a_phone_an_unrelated_class_change_settles_too(box):
     assert o["docked"] is False
 
 
+@node
+def test_any_button_that_writes_a_class_settles_after_one_look(box):
+    """The owner's follow-up (2026-11-25): "any interaction with any buttons
+    would cause a hang". Pantheon's buttons mark state with classes on the page
+    and the sidebar (open, active, a theme, a modal). Each such write is one
+    look at the pane, and a look that finds the pane in place writes nothing."""
+    o = _run(box, _PRE, """
+        const P = apolloPage();
+        D.mountDeck();
+        await settle();
+        const html = document.documentElement;
+        const writes = [
+          () => html.classList.add('modal-open'), () => html.classList.remove('modal-open'),
+          () => html.classList.toggle('dark'), () => html.classList.add('apollo-chat'),
+          () => html.classList.add('apollo-chat'), () => html.classList.remove('not-there'),
+          () => P.sb.classList.add('active'), () => P.sb.classList.remove('active'),
+          () => P.sb.classList.toggle('pinned'), () => html.classList.add('apollo-docked'),
+        ];
+        const buttons = writes.map((w, i) => {
+          const b = document.createElement('button'); b.id = 'b' + i;
+          b.addEventListener('click', w); document.body.appendChild(b); return b;
+        });
+        const each = [];
+        for (const b of buttons) {
+          mo.delivered = 0;
+          b.click();
+          await settle();
+          each.push(mo.delivered);
+        }
+        out({ looped: mo.looped, most: Math.max(...each),
+              docked: html.classList.contains('apollo-docked'),
+              inSidebar: document.getElementById('apollo-control').parentNode === P.sb });
+        D.unmountDeck();
+    """)
+    assert o["looped"] is False, "a button's class write set the pane looping: the page hangs"
+    assert o["most"] <= 1, "a button's class write should cost the pane one look, not a chain"
+    assert o["docked"] is True and o["inSidebar"] is True
+
+
 def test_entering_apollos_page_again_writes_no_class_it_already_has():
     """New chat enters Apollo's page while it is up. Writing `apollo-view` then
     changes nothing on screen and only wakes every class watcher on the page."""
