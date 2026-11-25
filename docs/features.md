@@ -42,7 +42,7 @@ How each one is controlled, and by whom, is in the [capabilities reference](capa
   when mail arrives
 - Notes, tasks and a calendar with CalDAV sync; gallery and image editor
 - The cockpit: one window with a tuckable workspace column (Document, Workstation, Browser) in four
-  layouts, twenty palettes in one material, a command palette, and the same app at phone width
+  layouts, twenty-two palettes in two finishes, a command palette, and the same app at phone width
 - An untouched New Chat has original ASCII scenery behind its welcome (a trireme on the Aegean, a
   faint Olympus ridge and a temple), with gentle motion that stops when the tab is hidden and a still
   scene for reduced motion: [Notebook](review/voyage-notebook-1440.png),
@@ -69,7 +69,7 @@ been built on every day since. Everything below arrived after the fork; each has
 
 | | Added since the fork |
 |---|---|
-| **Interface** | The cockpit: a new shell with a docked workspace column, one material in twenty palettes, the composer deck, `/` and `@` pickers, a next step waiting for <kbd>Tab</kbd> |
+| **Interface** | The cockpit: a new shell with a docked workspace column, twenty-two palettes in a hairline or glass finish, the composer deck, `/` and `@` pickers, a next step waiting for <kbd>Tab</kbd> |
 | **Computer use** | The workstation (container or KVM VM), KasmVNC live desktop with take-over, the agent's own live browser, four OS images, screen grounding, Computer Use mode, saved starting points |
 | **Devices** | Android phones, foldables and tablets the agent drives, installed on demand |
 | **Agents** | The Agents hall — 259 agents, 18 teams, evaluation cases through the real harness, model-capability checks |
