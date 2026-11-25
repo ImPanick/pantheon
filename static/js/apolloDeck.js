@@ -316,7 +316,9 @@ export function placeControl() {
       if (before && before.parentNode === sb) sb.insertBefore(control, before);
       else sb.appendChild(control);
     }
-    _setClass(html, 'apollo-docked', true);
+    // Written out (not through `_setClass`) so the root-class wiring check sees
+    // who writes `apollo-docked`; still only when it isn't already on.
+    if (html && !html.classList.contains('apollo-docked')) html.classList.add('apollo-docked');
     _setClass(root, 'rail-out', true);
   } else {
     if (control.parentNode !== root) root.insertBefore(control, root.firstChild || null);
