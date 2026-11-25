@@ -297,7 +297,14 @@ export function sidebarShowing() {
   try { return globalThis.matchMedia('(min-width: 769px)').matches; } catch (_) { return false; }
 }
 
-/** Put the control pane in the sidebar's place, or in the deck. */
+/** Put the control pane in the sidebar's place, or in the deck.
+ *
+ *  It writes a class only when the class has to change. `_watchPlace` runs
+ *  this on every class change of the page and the sidebar, and the DOM counts
+ *  every `classList.add` and `remove` as a change, even one that changes
+ *  nothing: writing `apollo-docked` each time woke the watcher, which ran this
+ *  again, without end, and the tab hung (owner's test, 2026-11-25: New chat and
+ *  the Chat / Apollo switch "locked up the entire Pantheon system"). */
 export function placeControl() {
   if (!_deck) return;
   const { control, root } = _deck;
@@ -309,13 +316,19 @@ export function placeControl() {
       if (before && before.parentNode === sb) sb.insertBefore(control, before);
       else sb.appendChild(control);
     }
-    if (html) html.classList.add('apollo-docked');
-    root.classList.add('rail-out');
+    _setClass(html, 'apollo-docked', true);
+    _setClass(root, 'rail-out', true);
   } else {
     if (control.parentNode !== root) root.insertBefore(control, root.firstChild || null);
-    if (html) html.classList.remove('apollo-docked');
-    root.classList.remove('rail-out');
+    _setClass(html, 'apollo-docked', false);
+    _setClass(root, 'rail-out', false);
   }
+}
+
+/** Add or take off `name` only when it isn't already so (see `placeControl`). */
+function _setClass(el, name, on) {
+  if (!el || el.classList.contains(name) === on) return;
+  if (on) el.classList.add(name); else el.classList.remove(name);
 }
 
 function _watchPlace() {

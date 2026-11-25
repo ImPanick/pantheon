@@ -144,7 +144,9 @@ function _restoreMode() {
 export function enterApolloView(hooks = {}) {
   _hooks = hooks || {};
   const html = document.documentElement;
-  if (html) html.classList.add('apollo-view');
+  // Only when it isn't on yet: New chat and the switch enter this page while
+  // it is up, and a second write wakes every class watcher on the page.
+  if (html && !html.classList.contains('apollo-view')) html.classList.add('apollo-view');
   _buildBar();
   if (!_on) {
     _agentMode();
