@@ -1,12 +1,12 @@
 /* XPM */
 static char * close_inactive_xpm[] = {
 "30 30 6 2",
-"aa	c #21282a",
-"ab	c #212425",
-"ac	c #181b1c",
-"ad	c #202425",
-"ae	c #596568",
-"af	c #313738",
+"aa	c #272c38",
+"ab	c #222834",
+"ac	c #191e2b",
+"ad	c #232833",
+"ae	c #666971",
+"af	c #363a45",
 "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 "abababababababababababababababababababababababababababababab",
 "acacacacacacacacacacacacacacacacacacacacacacacacacacacacacac",

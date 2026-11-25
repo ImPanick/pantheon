@@ -12,17 +12,17 @@
   <property name="font-name" type="string" value="JetBrains Mono 11"/>
   <property name="font-use-system" type="bool" value="false"/>
   <property name="font-allow-bold" type="bool" value="true"/>
-  <property name="color-foreground" type="string" value="#cfd9de"/>
-  <property name="color-background" type="string" value="#15181c"/>
-  <property name="color-cursor" type="string" value="#e06c75"/>
-  <property name="color-cursor-foreground" type="string" value="#15181c"/>
+  <property name="color-foreground" type="string" value="#dfe3ec"/>
+  <property name="color-background" type="string" value="#06080e"/>
+  <property name="color-cursor" type="string" value="#f3b23f"/>
+  <property name="color-cursor-foreground" type="string" value="#06080e"/>
   <property name="color-cursor-use-default" type="bool" value="false"/>
-  <property name="color-selection" type="string" value="#e8eef0"/>
-  <property name="color-selection-background" type="string" value="#5a3a40"/>
+  <property name="color-selection" type="string" value="#f4f6fa"/>
+  <property name="color-selection-background" type="string" value="#4a3814"/>
   <property name="color-selection-use-default" type="bool" value="false"/>
   <property name="color-bold-use-default" type="bool" value="true"/>
   <property name="color-bold-is-bright" type="bool" value="false"/>
-  <property name="color-palette" type="string" value="#1e2228;#e06c75;#98c379;#e5c07b;#61afef;#c678dd;#56b6c2;#abb2bf;#5c6370;#ef8891;#b0d68f;#f0d197;#84c2f5;#d59ae6;#9cdef2;#e6eaf0"/>
+  <property name="color-palette" type="string" value="#151b2a;#e06c75;#98c379;#e5c07b;#61afef;#c678dd;#56b6c2;#abb2bf;#5c6370;#ef8891;#b0d68f;#f0d197;#84c2f5;#d59ae6;#9cdef2;#eaedf4"/>
   <property name="background-mode" type="string" value="TERMINAL_BACKGROUND_SOLID"/>
   <property name="misc-cursor-blinks" type="bool" value="false"/>
   <property name="misc-cursor-shape" type="string" value="TERMINAL_CURSOR_SHAPE_BLOCK"/>

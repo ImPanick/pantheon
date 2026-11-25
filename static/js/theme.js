@@ -10,6 +10,20 @@ import { prefersReducedMotion, whenShut } from './motion.js';
 import { makeWindowDraggable } from './windowDrag.js';
 
 export const THEMES = {
+  // The Pantheon look (getpantheon.ai): near-black ink, cool steel lines and a
+  // single warm gold accent. The default for anyone who hasn't picked a theme;
+  // its light twin follows the system's light mode. Both open in the
+  // `hairline` finish (see `THEME_DEFAULT_FINISH` and `static/hairline.css`).
+  pantheon:   { bg:'#06080e', fg:'#eaedf4', panel:'#0f1420', border:'#2a3142', red:'#f3b23f',
+                advanced: { sendBtnBg: '#f3b23f', sendBtnHover: '#ffc96a',
+                            userBubbleBg: '#151b2a', aiBubbleBg: '#06080e', bubbleBorder: '#1e2433',
+                            inputBg: '#0f1420', inputBorder: '#2a3142', sidebarBg: '#0a0e17',
+                            brandColor: '#f3b23f', brandMixTo: '#ffc96a', toggleActive: '#f3b23f' } },
+  pantheonlight: { bg:'#f3f5f9', fg:'#0d1220', panel:'#ffffff', border:'#cfd4de', red:'#a05e00',
+                advanced: { sendBtnBg: '#a05e00', sendBtnHover: '#8a5000',
+                            userBubbleBg: '#eceff5', aiBubbleBg: '#f3f5f9', bubbleBorder: '#dde1e9',
+                            inputBg: '#ffffff', inputBorder: '#cfd4de', sidebarBg: '#eceff5',
+                            brandColor: '#d98a0b', brandMixTo: '#a05e00', toggleActive: '#a05e00' } },
   dark:       { bg:'#282c34', fg:'#9cdef2', panel:'#111111', border:'#355a66', red:'#e06c75' },
   light:      { bg:'#f0ebe3', fg:'#5a5248', panel:'#faf6f0', border:'#d4cdc2', red:'#c47d5a' },
   midnight:   { bg:'#0d1117', fg:'#c9d1d9', panel:'#161b22', border:'#30363d', red:'#f85149' },
@@ -40,6 +54,8 @@ export const THEMES = {
 };
 
 const THEME_DESCRIPTIONS = {
+  pantheon: 'Pantheon - the getpantheon.ai look: ink, steel and gold (the default)',
+  pantheonlight: 'Pantheon light - the same look on paper white',
   guild: 'Guild — inspired by Discord chat spaces',
   codehost: 'Codehost — inspired by GitHub editor colours',
   grove: 'Grove — inspired by Spotify music greens',
@@ -49,7 +65,19 @@ const THEME_DESCRIPTIONS = {
   mintchat: 'Mintchat - inspired by WhatsApp chat greens',
 };
 
-const DEFAULT_THEME = 'dark';
+// The preset a person sees before they pick one: the Pantheon look, light or
+// dark after the operating system. `DEFAULT_THEME` is the dark one, for the
+// places that need a single name (a script without `matchMedia`, the tests).
+const DEFAULT_THEME = 'pantheon';
+// What a preset's swatch reads; a name not listed reads as itself.
+const THEME_LABELS = { pantheon: 'Pantheon', pantheonlight: 'Pantheon light', dark: 'original', gpt: 'GPT' };
+const DEFAULT_LIGHT_THEME = 'pantheonlight';
+export function defaultThemeName() {
+  try {
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) return DEFAULT_LIGHT_THEME;
+  } catch (_) { /* no media queries: the dark one */ }
+  return DEFAULT_THEME;
+}
 const LS_KEY = 'pantheon-theme';
 const CUSTOM_THEMES_KEY = 'pantheon-custom-themes';
 
@@ -99,6 +127,21 @@ const THEME_DEFAULT_FROSTED = {
   lavender:   true,
 };
 
+// The finish: how the cockpit's surfaces are drawn, independent of the
+// palette. `glass` is the cockpit as it shipped (translucent slabs, a light
+// field, soft lift, gradient accents). `hairline` is the getpantheon.ai
+// material: solid surfaces, one-pixel lines, small radii and flat gold accents
+// (`static/hairline.css`). Themes not listed open in glass; a finish a person
+// picks is stored with the theme and wins.
+export const FINISHES = ['glass', 'hairline'];
+const THEME_DEFAULT_FINISH = {
+  pantheon:      'hairline',
+  pantheonlight: 'hairline',
+};
+export function defaultFinishFor(name) {
+  return THEME_DEFAULT_FINISH[name] || 'glass';
+}
+
 // ── Custom theme persistence ──
 function _loadCustomThemes() {
   return Storage.getJSON(CUSTOM_THEMES_KEY, {});
@@ -121,6 +164,7 @@ export function saveCustomTheme(name, colors, opts) {
     if (opts.bgEffectIntensity !== undefined) entry.bgEffectIntensity = opts.bgEffectIntensity;
     if (opts.bgEffectSize !== undefined) entry.bgEffectSize = opts.bgEffectSize;
     if (opts.frosted !== undefined) entry.frosted = !!opts.frosted;
+    if (opts.finish) entry.finish = opts.finish;
   }
   ct[name] = entry;
   _saveCustomThemes(ct);
@@ -889,6 +933,20 @@ export function applyFrostedGlass(on) {
   document.body.classList.toggle('theme-frosted', !!on);
 }
 
+/** The finish (`glass` | `hairline`), as `data-ck-finish` on <html> — the
+ *  attribute `static/hairline.css` is scoped to. Anything unknown is glass. */
+export function applyFinish(finish) {
+  const f = FINISHES.includes(finish) ? finish : 'glass';
+  document.documentElement.setAttribute('data-ck-finish', f);
+  return f;
+}
+
+/** The finish a saved theme opens in: the one stored with it, else its own default. */
+export function savedFinish(saved) {
+  if (saved && FINISHES.includes(saved.finish)) return saved.finish;
+  return defaultFinishFor(saved ? saved.name : defaultThemeName());
+}
+
 // Read current size multiplier for JS effects (canvas-based).
 function _getEffectSize() {
   const v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--bg-effect-size'));
@@ -974,6 +1032,7 @@ export function save(name, colors, opts) {
     if (opts.bgEffectIntensity !== undefined && opts.bgEffectIntensity !== 1) obj.bgEffectIntensity = opts.bgEffectIntensity;
     if (opts.bgEffectSize !== undefined && opts.bgEffectSize !== 1) obj.bgEffectSize = opts.bgEffectSize;
     if (opts.frosted) obj.frosted = true;
+    if (opts.finish) obj.finish = opts.finish;
   }
   Storage.setJSON(LS_KEY, obj);
   _syncToServer(obj);
@@ -1133,7 +1192,7 @@ export function initThemeUI() {
   if (!grid) return;
 
   const saved = getSaved();
-  const activeName = saved ? saved.name : DEFAULT_THEME;
+  const activeName = saved ? saved.name : defaultThemeName();
   const customThemes = _loadCustomThemes();
 
   // Render preset swatches
@@ -1145,7 +1204,7 @@ export function initThemeUI() {
         <span style="background:${c.fg}"></span>
         <span style="background:${c.red}"></span>
       </div>
-      ${name === 'dark' ? 'original' : (name === 'gpt' ? 'GPT' : name)}
+      ${THEME_LABELS[name] || name}
     </div>
   `).join('');
 
@@ -1188,6 +1247,8 @@ export function initThemeUI() {
     if (sz) opts.bgEffectSize = parseFloat(sz.value) / 100;
     const fr = document.getElementById('theme-frosted-toggle');
     if (fr) opts.frosted = !!fr.checked;
+    const fn = document.getElementById('theme-finish-select');
+    if (fn) opts.finish = fn.value;
     return opts;
   }
   function _saveFull(name, colors) { save(name, colors, _getOpts()); }
@@ -1222,6 +1283,8 @@ export function initThemeUI() {
         const fr = (ct && ct.frosted !== undefined)
           ? !!ct.frosted
           : (THEME_DEFAULT_FROSTED[name] === true);
+        const fin = (ct && FINISHES.includes(ct.finish)) ? ct.finish : defaultFinishFor(name);
+        applyFinish(fin);
         applyFontDensity(f, d);
         applyBgEffectColor(ec);
         applyBgEffectIntensity(ei);
@@ -1242,7 +1305,9 @@ export function initThemeUI() {
         if (eis) eis.value = String(Math.round(ei * 100));
         if (szs) szs.value = String(Math.round(sz * 100));
         if (frs) frs.checked = fr;
-        save(name, colors, { font: f, density: d, bgPattern: p, bgEffectColor: ec, bgEffectIntensity: ei, bgEffectSize: sz, frosted: fr });
+        const fns = document.getElementById('theme-finish-select');
+        if (fns) fns.value = fin;
+        save(name, colors, { font: f, density: d, bgPattern: p, bgEffectColor: ec, bgEffectIntensity: ei, bgEffectSize: sz, frosted: fr, finish: fin });
       });
     });
     g.querySelectorAll('.theme-delete-btn').forEach(btn => {
@@ -1258,12 +1323,12 @@ export function initThemeUI() {
   });
 
   // Init color pickers from current theme and apply syntax colors
-  const currentColors = saved ? saved.colors : THEMES[DEFAULT_THEME];
+  const currentColors = saved ? saved.colors : THEMES[defaultThemeName()];
   applyColors(currentColors);
   syncPickers(currentColors);
 
   // Reference colors for per-picker reset (the theme you started from)
-  const refName = saved ? saved.name : DEFAULT_THEME;
+  const refName = saved ? saved.name : defaultThemeName();
   const refColors = THEMES[refName] || customThemes[refName] || currentColors;
   const refDefaults = computeAdvancedDefaults(refColors);
 
@@ -1439,11 +1504,18 @@ export function initThemeUI() {
     resetBtn.parentNode.replaceChild(newReset, resetBtn);
     newReset.addEventListener('click', () => {
       Storage.remove(LS_KEY);
-      const colors = THEMES[DEFAULT_THEME];
+      const defName = defaultThemeName();
+      const colors = THEMES[defName];
       applyColors(colors);
       syncPickers(colors);
       applyFontDensity(DEFAULT_FONT, DEFAULT_DENSITY);
+      applyFrostedGlass(false);
+      const fin = applyFinish(defaultFinishFor(defName));
       applyBgPattern('none');
+      const frs = document.getElementById('theme-frosted-toggle');
+      const fns = document.getElementById('theme-finish-select');
+      if (frs) frs.checked = false;
+      if (fns) fns.value = fin;
       const fs = document.getElementById('theme-font-select');
       const ds = document.getElementById('theme-density-select');
       const ps = document.getElementById('theme-bg-pattern-select');
@@ -1451,8 +1523,8 @@ export function initThemeUI() {
       if (ds) ds.value = DEFAULT_DENSITY;
       if (ps) ps.value = 'none';
       grid.querySelectorAll('.theme-swatch').forEach(s => s.classList.remove('active'));
-      const darkSwatch = grid.querySelector('[data-theme="dark"]');
-      if (darkSwatch) darkSwatch.classList.add('active');
+      const defSwatch = grid.querySelector(`[data-theme="${defName}"]`);
+      if (defSwatch) defSwatch.classList.add('active');
     });
   }
 
@@ -1612,6 +1684,7 @@ export function initThemeUI() {
   applyBgEffectIntensity(_initEffectIntensity);
   applyBgEffectSize(_initEffectSize);
   applyFrostedGlass(_initFrosted);
+  const _initFinish = applyFinish(savedFinish(saved));
   _noteBgTheme(saved && saved.name);   // `P9-16`
   applyBgPattern(_initPattern);
 
@@ -1692,6 +1765,20 @@ export function initThemeUI() {
     frostedToggle.addEventListener('change', () => {
       applyFrostedGlass(frostedToggle.checked);
       const s = getSaved(); if (s) _saveFull(s.name, s.colors);
+    });
+  }
+
+  const finishSelect = document.getElementById('theme-finish-select');
+  if (finishSelect) {
+    const nfin = finishSelect.cloneNode(true); finishSelect.parentNode.replaceChild(nfin, finishSelect);
+    nfin.value = _initFinish;
+    nfin.addEventListener('change', () => {
+      applyFinish(nfin.value);
+      // Unlike the options above, a finish picked before any theme is saved
+      // is kept: it is saved against the default the person is looking at.
+      const s = getSaved();
+      const n = s ? s.name : defaultThemeName();
+      _saveFull(n, s ? s.colors : THEMES[n]);
     });
   }
 
@@ -1788,6 +1875,7 @@ export function initThemeUI() {
       if (cur && cur.bgEffectIntensity !== undefined) obj.bgEffectIntensity = cur.bgEffectIntensity;
       if (cur && cur.bgEffectSize !== undefined) obj.bgEffectSize = cur.bgEffectSize;
       if (cur && cur.frosted !== undefined) obj.frosted = !!cur.frosted;
+      if (cur && cur.finish !== undefined) obj.finish = cur.finish;
       const json = JSON.stringify(obj, null, 2);
       const blob = new Blob([json], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -1846,6 +1934,7 @@ export function initThemeUI() {
       if (parsed.bgEffectIntensity !== undefined) opts.bgEffectIntensity = Number(parsed.bgEffectIntensity);
       if (parsed.bgEffectSize !== undefined) opts.bgEffectSize = Number(parsed.bgEffectSize);
       if (parsed.frosted !== undefined) opts.frosted = !!parsed.frosted;
+      if (parsed.finish !== undefined && FINISHES.includes(parsed.finish)) opts.finish = parsed.finish;
       const result = saveCustomTheme(slug, colorData, opts);
       if (result === 'limit') { saveError.textContent = 'Max ' + MAX_CUSTOM_THEMES + ' custom themes. Delete one first.'; saveError.style.display = 'block'; return; }
       save(slug, colorData, opts);
@@ -1858,6 +1947,7 @@ export function initThemeUI() {
       // and size off the custom properties when they start, so setting them
       // after `applyBgPattern` would leave the first frames on the old values.
       applyFrostedGlass(!!opts.frosted);
+      applyFinish(opts.finish || 'glass');
       _noteBgTheme(slug);   // `P9-16`
       applyBgPattern(opts.bgPattern || 'none');
       importAreaEl.classList.add('hidden');
@@ -2397,7 +2487,7 @@ function _initPerlinFlow() {
   const _onResize = () => resize();
   window.addEventListener('resize', _onResize);
   function getColor() { const s = getComputedStyle(document.documentElement); return s.getPropertyValue('--bg-effect-color').trim() || s.getPropertyValue('--fg').trim() || '#9cdef2'; }
-  function getBg() { return getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#282c34'; }
+  function getBg() { return getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#06080e'; }
   let _cachedBg = '', _fadeStyle = '';
   function getFade() {
     const bg = getBg();
@@ -2744,7 +2834,7 @@ function _initAscii({ still = false } = {}) {
 const themeModule = { initThemeUI, closePopup, makeDraggable,
                        THEMES, applyColors, applyFontDensity, applyBgPattern,
                        applyBgEffectColor, applyBgEffectIntensity, applyBgEffectSize,
-                       applyFrostedGlass,
+                       applyFrostedGlass, applyFinish, defaultFinishFor, defaultThemeName,
                        save, getSaved, saveCustomTheme, deleteCustomTheme,
                        getCustomThemes };
 
@@ -2777,6 +2867,12 @@ async function _initWithSync() {
     }
   } catch (e) { console.warn('Custom theme server sync failed:', e); }
   initThemeUI();
+  // Nobody has picked a theme yet: the default follows the system's light or
+  // dark mode, and keeps following it until a theme is picked.
+  try {
+    const mq = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)');
+    if (mq && mq.addEventListener) mq.addEventListener('change', () => { if (!getSaved()) initThemeUI(); });
+  } catch (_) { /* no media queries: the dark default stays */ }
 }
 
 if (document.readyState === 'loading') {
