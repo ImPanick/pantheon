@@ -6,7 +6,7 @@ Structured actions are tool calls with a schema, never parsed out of prose
 `manage_memory` and `manage_session` are, so the registry gains one name:
 
   status        — what is open, what needs the person
-  create_task   — a goal or errand as a task, staffed with a lead agent
+  create_task   — a goal or errand as a task, with a lead written for it (or a saved agent named)
   start_task    — run a task's lead now
   update_task   — move a task on: state, next step, outcome
   ask           — mark a task Needs you with its one question
@@ -80,10 +80,11 @@ def _do(db, owner: str, args: Dict[str, Any], space_id: Optional[str] = None) ->
     if action == "create_task":
         t = tasks.create(db, owner, title=args.get("title"), brief=args.get("brief"),
                          kind=args.get("kind"), parent_id=args.get("parent_id"),
-                         lead_agent=args.get("lead_agent"),
+                         lead_agent=args.get("lead_agent"), lead=args.get("lead"),
                          budget_tokens=args.get("budget_tokens"), started_by="apollo",
                          space_id=space_id)
-        lead = f"led by {t.lead_agent}" if t.lead_agent else "with no roster agent to lead it yet"
+        from src.apollo.chat import lead_name
+        lead = f"led by {lead_name(owner, t.lead_agent)}" if t.lead_agent else "with no lead yet"
         run = None
         if args.get("start", True) and t.lead_agent:
             from src.apollo import runs

@@ -196,6 +196,8 @@ html.cockpit[data-ck-finish="hairline"] .ck-switch .ck-surf-list { border-radius
 html.cockpit[data-ck-finish="hairline"] .ck-surf-ind { border-radius: 6px; }
 html.cockpit[data-ck-finish="hairline"] .ck-surf-ind::after { background: var(--ck-accent); }
 html.cockpit[data-ck-finish="hairline"] .wsv-modal .wsv-who select { border-radius: 6px !important; }
+html.cockpit[data-ck-finish="hairline"] .pan-modes { border-radius: 6px; }
+html.cockpit[data-ck-finish="hairline"] .pan-mode-btn { border-radius: 6px; }
 html.cockpit[data-ck-finish="hairline"] .apo-bar-btn { border-radius: 6px; }
 html.cockpit[data-ck-finish="hairline"] .apo-deck-rail, html.cockpit[data-ck-finish="hairline"] .apo-deck-board, html.cockpit[data-ck-finish="hairline"] .apo-deck-needs { border-radius: 8px; }
 html.cockpit[data-ck-finish="hairline"] .apo-btn.apo-newgoal-b { border-radius: 6px; }
@@ -230,6 +232,7 @@ html.cockpit[data-ck-finish="hairline"] .apo-needs .apo-need { border-radius: 6p
 html.cockpit[data-ck-finish="hairline"] .apo-card { border-radius: 6px; }
 html.cockpit[data-ck-finish="hairline"] .apo-chat-log { border-radius: 6px; }
 html.cockpit[data-ck-finish="hairline"] .apo-msg-t { border-radius: 6px; }
+html.cockpit[data-ck-finish="hairline"] .pan-mode-btn { border-radius: 6px; }
 html.cockpit[data-ck-finish="hairline"] .apo-chat-ask .apo-need { border-radius: 6px; }
 html.cockpit[data-ck-finish="hairline"] .apo-space-menu { border-radius: 6px; }
 html.cockpit[data-ck-finish="hairline"] .apo-chip { border-radius: 6px; }

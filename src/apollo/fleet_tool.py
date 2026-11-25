@@ -8,8 +8,10 @@ task whose chat this is, its hire, the Apollo task that hire leads — never
 from the arguments, so an agent can't reach another task or another person.
 
   roster    — agents in the roster that fit a need, with their fit badge
-  delegate  — hand a sub-task to an agent: {agent, brief, review_by?}
-  ask       — ask an agent one question: {agent, question}
+  delegate  — hand a sub-task to a saved agent, or leave `agent` out and a
+              teammate is written for it (`lead`: {name, role, steps, tools}):
+              {agent?, lead?, brief, review_by?}
+  ask       — ask an agent one question: {agent?, lead?, question}
   escalate  — a decision or a yes only the person can give: {question}
   propose_agent — no agent fits: {need, why}. It's drafted, proven and
               waits for an admin (`src/apollo/gaps.py`); this run carries on.
@@ -65,19 +67,20 @@ def _do(db, owner: str, task, agent_id: Optional[str], args: Dict[str, Any]) -> 
         found = roster(owner, args.get("need") or args.get("brief") or task.title)
         found = [a for a in found if a["id"] != me]
         if not found:
-            return _out("No agent in the roster fits that. Do it yourself, and propose the missing agent "
-                        "with propose_agent if the job will come up again."), []
+            return _out("No saved agent fits that. Delegate without an agent and a teammate is written "
+                        "for the job, or propose a saved one with propose_agent if it will come up again."), []
         return _out("\n".join(f"- {a['id']}: {a['name']} — {a['tagline']} ({a['fit']})" for a in found)), []
     if action in ("delegate", "ask"):
         brief = args.get("brief") if action == "delegate" else args.get("question")
         if action == "ask" and brief:
             brief = f"Answer this one question for {me}, with what your answer rests on:\n{brief}"
         child = F.hand_off(db, owner, task, from_agent=me, to_agent=args.get("agent"), brief=brief,
-                           via=action, review_by=args.get("review_by"))
+                           via=action, review_by=args.get("review_by"), lead=args.get("lead"))
         run, why = runs.prepare(db, owner, child)
         db.commit()
-        said = (f"Handed to {child.lead_agent} as “{child.title}”." if action == "delegate"
-                else f"Asked {child.lead_agent}.")
+        from src.apollo.chat import lead_name
+        who = lead_name(owner, child.lead_agent)
+        said = (f"Handed to {who} as “{child.title}”." if action == "delegate" else f"Asked {who}.")
         if why:
             said += f" It can't start yet: {why}"
         return _out(said + " You run again with the report when it lands; end this run now, saying "

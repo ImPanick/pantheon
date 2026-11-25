@@ -363,7 +363,7 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "apollo",
-            "description": "Apollo's own records for the person you work for: tasks (goals and errands, each led by an agent from the roster), the notebook (open loops, things already talked through) and what Apollo knows about them (stated or inferred). Use it to turn real work into a task instead of doing it inline, to ask the one question a task is stuck on, and to keep what you learn. The owner is always the signed-in person.",
+            "description": "Apollo's own records for the person you work for: tasks (goals and errands, each led by a teammate Apollo writes for that goal, or a saved agent), the notebook (open loops, things already talked through) and what Apollo knows about them (stated or inferred). Use it to turn real work into a task instead of doing it inline, to ask the one question a task is stuck on, and to keep what you learn. The owner is always the signed-in person.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -372,7 +372,8 @@ FUNCTION_TOOL_SCHEMAS = [
                     "title": {"type": "string", "description": "create_task/update_task: the task in a few words"},
                     "brief": {"type": "string", "description": "create_task/update_task: what done looks like, and anything the lead needs to know"},
                     "kind": {"type": "string", "description": "create_task: the kind of work in a few words (mail reply, cert renewal)"},
-                    "lead_agent": {"type": "string", "description": "create_task/update_task: an agent id from the roster to lead it; leave out to let Pantheon pick by fit"},
+                    "lead_agent": {"type": "string", "description": "create_task/update_task: a saved agent's id to lead it; leave out and a lead is written for this goal"},
+                    "lead": {"type": "object", "description": "create_task: the lead to write for this goal when no lead_agent is named; it lives with the goal and never joins the roster", "properties": {"name": {"type": "string", "description": "a short name for the teammate (Cert renewer)"}, "role": {"type": "string", "description": "what it does, in a line"}, "steps": {"type": "array", "items": {"type": "string"}, "description": "how it should work, a line each"}, "tools": {"type": "array", "items": {"type": "string"}, "description": "tool names it needs; read and search tools by default, and anything that changes things asks the person first"}}},
                     "budget_tokens": {"type": "integer", "description": "create_task/update_task: tokens it may spend on paid models (local models are never capped)"},
                     "start": {"type": "boolean", "description": "create_task: start the lead now (default true)"},
                     "state": {"type": "string", "enum": ["working", "needs_you", "waiting", "done", "open", "settled", "dropped"], "description": "update_task: working, needs_you, waiting or done; settle_note: settled or dropped"},
@@ -395,14 +396,15 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "fleet",
-            "description": "Your team, while you lead one of the person's Apollo tasks: find agents in the roster that fit a need, hand one a sub-task, ask one a single question, put a decision only the person can make to them, or, when no agent fits, propose the missing one for an admin to approve. A delegate gets no more tools than you hold. Its report comes back to you as a new run.",
+            "description": "Your team, while you lead one of the person's Apollo tasks: find saved agents that fit a need, hand a sub-task to one or to a teammate written for the job, ask a single question, put a decision only the person can make to them, or propose a saved agent for an admin to approve when the job will come up again. A delegate gets no more tools than you hold. Its report comes back to you as a new run.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "action": {"type": "string", "enum": ["roster", "delegate", "ask", "escalate", "propose_agent"], "description": "What to do"},
                     "need": {"type": "string", "description": "roster: the kind of help you need, in a few words; propose_agent: the job the missing agent would do"},
                     "why": {"type": "string", "description": "propose_agent: why no agent in the roster fits it"},
-                    "agent": {"type": "string", "description": "delegate/ask: the agent's id from roster"},
+                    "agent": {"type": "string", "description": "delegate/ask: a saved agent's id from roster; leave out and a teammate is written for the job"},
+                    "lead": {"type": "object", "description": "delegate/ask with no agent: the teammate to write for the job", "properties": {"name": {"type": "string", "description": "a short name for the teammate (Cert renewer)"}, "role": {"type": "string", "description": "what it does, in a line"}, "steps": {"type": "array", "items": {"type": "string"}, "description": "how it should work, a line each"}, "tools": {"type": "array", "items": {"type": "string"}, "description": "tool names it needs; read and search tools by default, and anything that changes things asks the person first"}}},
                     "brief": {"type": "string", "description": "delegate: what done looks like and what the agent needs to know"},
                     "review_by": {"type": "string", "description": "delegate: an agent id to review the work, or person to have the person check it; leave out for no review"},
                     "question": {"type": "string", "description": "ask: the one question; escalate: the decision or yes only the person can give"}
