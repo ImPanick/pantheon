@@ -6,8 +6,8 @@
    the theming." The palette is the theme (`THEMES.pantheon` and
    `THEMES.pantheonlight`, static/js/theme.js); this sheet is the material,
    chosen beside it in the theme editor (Customize → Finish) and stored with
-   the theme. It is on when <html data-ck-finish="hairline">, which the two
-   Pantheon presets open in, and every rule here is scoped to that attribute,
+   the theme. It is on when <html data-ck-finish="hairline">, which every
+   theme opens in (`DEFAULT_FINISH`), and every rule here is scoped to that attribute,
    so the glass finish (`static/cockpit.css` as it shipped) is untouched.
 
    What the site draws, and so what this draws:
@@ -196,11 +196,19 @@ html.cockpit[data-ck-finish="hairline"] .ck-switch .ck-surf-list { border-radius
 html.cockpit[data-ck-finish="hairline"] .ck-surf-ind { border-radius: 6px; }
 html.cockpit[data-ck-finish="hairline"] .ck-surf-ind::after { background: var(--ck-accent); }
 html.cockpit[data-ck-finish="hairline"] .wsv-modal .wsv-who select { border-radius: 6px !important; }
+html.cockpit[data-ck-finish="hairline"] .pan-modes { border-radius: 6px; }
+html.cockpit[data-ck-finish="hairline"] .pan-mode-btn { border-radius: 6px; }
+html.cockpit[data-ck-finish="hairline"] .apo-bar-btn { border-radius: 6px; }
 html.cockpit[data-ck-finish="hairline"] .apo-deck-rail, html.cockpit[data-ck-finish="hairline"] .apo-deck-board, html.cockpit[data-ck-finish="hairline"] .apo-deck-needs { border-radius: 8px; }
+html.cockpit[data-ck-finish="hairline"] .apo-btn.apo-newgoal-b { border-radius: 6px; }
+html.cockpit[data-ck-finish="hairline"] .apo-nav { border-radius: 6px; }
 html.cockpit[data-ck-finish="hairline"] .apo-goal { border-radius: 6px; }
 html.cockpit[data-ck-finish="hairline"] .apo-deck-ask { border-radius: 6px; }
+html.cockpit[data-ck-finish="hairline"] .apo-step { border-radius: 0 6px 6px 0; }
 html.cockpit[data-ck-finish="hairline"] .apo-need { border-radius: 6px; }
 html.cockpit[data-ck-finish="hairline"] .apo-count { border-radius: 6px; }
+html.cockpit[data-ck-finish="hairline"] .apo-deck-board .apo-msg-lead .apo-msg-t { border-radius: 6px; }
+html.cockpit[data-ck-finish="hairline"] .apo-deck-board .apo-chat-form .apo-chat-input { border-radius: 6px; }
 html.cockpit[data-ck-finish="hairline"] .apo-earlier { border-radius: 6px; }
 html.cockpit[data-ck-finish="hairline"] .ctl-ibtn { border-radius: 6px !important; }
 html.cockpit[data-ck-finish="hairline"] .ctl-pill { border-radius: 6px !important; }
@@ -224,6 +232,7 @@ html.cockpit[data-ck-finish="hairline"] .apo-needs .apo-need { border-radius: 6p
 html.cockpit[data-ck-finish="hairline"] .apo-card { border-radius: 6px; }
 html.cockpit[data-ck-finish="hairline"] .apo-chat-log { border-radius: 6px; }
 html.cockpit[data-ck-finish="hairline"] .apo-msg-t { border-radius: 6px; }
+html.cockpit[data-ck-finish="hairline"] .pan-mode-btn { border-radius: 6px; }
 html.cockpit[data-ck-finish="hairline"] .apo-chat-ask .apo-need { border-radius: 6px; }
 html.cockpit[data-ck-finish="hairline"] .apo-space-menu { border-radius: 6px; }
 html.cockpit[data-ck-finish="hairline"] .apo-chip { border-radius: 6px; }
@@ -300,6 +309,9 @@ html.cockpit[data-ck-finish="hairline"] .chat-container .msg .body a {
 }
 html.cockpit[data-ck-finish="hairline"] .chat-container .msg .body a:hover { text-decoration-color: var(--ck-hue); }
 html.cockpit[data-ck-finish="hairline"] .msg .body blockquote { border-left-color: color-mix(in oklab, var(--ck-hue) 60%, transparent) !important; }
+/* list numbers and bullets in the theme's accent, as the site marks its lists;
+   the words themselves stay in ink (cockpit.css, "Emphasis in a reply") */
+html.cockpit[data-ck-finish="hairline"] .msg .body li::marker { color: var(--ck-hue); }
 html.cockpit[data-ck-finish="hairline"] .msg-reaction-pill,
 html.cockpit[data-ck-finish="hairline"] .msg-reaction-badge { box-shadow: inset 0 0 0 1px var(--ck-edge-lo); }
 html.cockpit[data-ck-finish="hairline"] .agent-thread { background: transparent; border-color: var(--ck-edge); }

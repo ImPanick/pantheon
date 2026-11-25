@@ -29,7 +29,7 @@ def apollo_as(apollo_db, tmp_path, monkeypatch):
     (tmp_path / "brain").mkdir()
     monkeypatch.setattr(knows, "_manager", MemoryManager(str(tmp_path / "brain")))
     monkeypatch.setattr(knows, "_sealed", {})
-    monkeypatch.setattr("src.apollo.lead.pick_lead", lambda owner, text, **k: None)
+    monkeypatch.setattr("src.apollo.goal_lead.write", lambda *a, **k: None)
     manager = signed_in(monkeypatch, tmp_path / "auth")
     import routes.apollo_routes as apollo_routes
 

@@ -23,12 +23,23 @@
 // The deck reads `/api/apollo/*` every few seconds while it is on the page and
 // redraws a region only when what it shows changed, so an answer being typed
 // is never wiped by a refresh.
+//
+// The rail is Apollo's control pane. On a desktop with the sidebar showing, it
+// takes the sidebar's place: the owner's second test (2026-11-24) said "If we
+// have apollo up we don't need the pantheon panel with chats and email ... these
+// should be merged into the Apollo control pane", so the pane carries the goals,
+// the person's other chats and their mail, and the generic sidebar's own list
+// is put away while Apollo is up. With the sidebar tucked, or on a phone, the
+// same pane is the deck's first column. The deck's columns follow the width it
+// has, not the window's, so opening the workspace beside it restacks it rather
+// than crushing the board to a word a line (the same test's second screenshot).
 
 import uiModule from './ui.js';
 import * as M from './apolloPaneModel.js';
 import * as D from './apolloDeckModel.js';
 import * as Sp from './apolloSpaces.js';
 import { createTaskChat } from './apolloTaskChat.js';
+import { renderText } from './apolloText.js';
 
 const DECK_ID = 'apollo-deck';
 const POLL_MS = 5000;
@@ -42,6 +53,7 @@ let _sigs = {};              // what each region last drew, so a poll redraws on
 let _seenAt = '';            // when the person last looked, for home's "since you last looked"
 let _offSpace = null;
 let _gen = 0;
+let _watch = null;           // what moves the control pane between the sidebar and the deck
 
 function _say(msg) {
   try { uiModule.showToast(msg); } catch (_) { /* no toast host */ }
@@ -96,6 +108,31 @@ function _dot(dot) {
   const d = _el('span', `apo-dot ${dot.cls}`);
   d.setAttribute('aria-hidden', 'true');
   return d;
+}
+
+const _SVG = (d) => `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const PLUS = _SVG('<path d="M12 5v14M5 12h14"/>');
+const HOME = _SVG('<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9.5h13V10"/>');
+const SEARCH = _SVG('<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/>');
+const LIST = _SVG('<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>');
+const MAIL = _SVG('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 6.5 8.5 6 8.5-6"/>');
+
+/** One of the deck's own icons (fixed markup, never server text). */
+function _icon(svg) {
+  const i = _el('span', 'apo-ico');
+  i.setAttribute('aria-hidden', 'true');
+  i.innerHTML = svg;
+  return i;
+}
+
+function _iconBtn(cls, svg, label, onClick) {
+  const b = _el('button', cls);
+  b.type = 'button';
+  b.title = label;
+  b.setAttribute('aria-label', label);
+  b.appendChild(_icon(svg));
+  b.addEventListener('click', onClick);
+  return b;
 }
 
 // ── the rail ───────────────────────────────────────────────────────────────
@@ -167,6 +204,8 @@ function _drawRail(tasks) {
   const sig = JSON.stringify([_goal, rows.open.map(D.cardOf), rows.done.map(D.cardOf), rows.moreDone]);
   if (_sigs.rail === sig) return;
   _sigs.rail = sig;
+  _deck.home.classList.toggle('is-open', !_goal);
+  _deck.home.setAttribute('aria-current', _goal ? 'false' : 'true');
   const list = _deck.railList;
   list.replaceChildren();
   if (!rows.open.length && !rows.done.length) {
@@ -179,6 +218,124 @@ function _drawRail(tasks) {
     for (const t of rows.done) list.appendChild(_card(t));
     if (rows.moreDone) list.appendChild(_el('p', 'apo-deck-none', `${rows.moreDone} more done`));
   }
+}
+
+// ── the person's other chats and their mail ────────────────────────────────
+
+const _byId = (id) => document.getElementById(id);
+
+/** Whether the person shows this sidebar section (Settings → Appearance, or
+ *  a feature they may not use, hides it with `display: none`). */
+function _shown(id) {
+  const sec = _byId(id);
+  return !!sec && !(sec.style && sec.style.display === 'none') && !sec.hidden;
+}
+
+/** Press a control the generic sidebar owns, so its own code does the work
+ *  (search, the inbox, compose) exactly as it does from the sidebar. */
+function _press(id) {
+  const b = _byId(id);
+  if (b) b.click();
+}
+
+async function _drawChats() {
+  const box = _deck.chats;
+  if (!_shown('sessions-section')) {
+    if (_sigs.chats !== 'off') { _sigs.chats = 'off'; box.hidden = true; }
+    return;
+  }
+  let S = null;
+  try { S = await import('./sessions.js'); } catch (_) { S = null; }
+  if (!_deck || !S) return;
+  const got = D.chatRows(S.getSessions?.() || [], S.getCurrentSessionId?.(), {
+    incognito: (id) => { try { return !!S.isIncognitoSession?.(id); } catch (_) { return false; } },
+  });
+  const sig = JSON.stringify(got);
+  if (_sigs.chats === sig) return;
+  _sigs.chats = sig;
+  box.hidden = false;
+  const list = _deck.chatList;
+  list.replaceChildren();
+  if (!got.rows.length) list.appendChild(_el('p', 'apo-deck-none', 'No other chats yet.'));
+  for (const r of got.rows) {
+    const b = _el('button', `apo-nav${r.pinned ? ' is-pinned' : ''}`);
+    b.type = 'button';
+    b.dataset.sessionId = r.id;
+    b.appendChild(_el('span', 'apo-nav-t', r.name));
+    b.addEventListener('click', () => { S.selectSession(r.id); });
+    list.appendChild(b);
+  }
+  if (got.more) {
+    list.appendChild(_btn('apo-nav apo-nav-more', `All chats (${got.more} more)`, () => S.openLibrary?.()));
+  }
+}
+
+function _drawMail() {
+  const box = _deck.mail;
+  const on = _shown('email-section');
+  const dot = _byId('email-unread-dot');
+  const n = on && dot && dot.style.display !== 'none' ? String(dot.textContent || '').trim() : '';
+  const sig = JSON.stringify([on, n]);
+  if (_sigs.mail === sig) return;
+  _sigs.mail = sig;
+  box.hidden = !on;
+  _deck.mailCount.textContent = n;
+  _deck.mailCount.hidden = !n;
+  _deck.inbox.setAttribute('aria-label', n ? `Inbox, ${n} unread` : 'Inbox');
+}
+
+// ── where the control pane sits ────────────────────────────────────────────
+
+/** True when the generic sidebar is showing as a panel beside the page: a
+ *  desktop width, not tucked away. Then the control pane takes its place. */
+export function sidebarShowing() {
+  const sb = _byId('sidebar');
+  const html = document.documentElement;
+  if (!sb || sb.classList.contains('hidden')) return false;
+  if (html && (html.classList.contains('pan-sidebar-mini') || html.classList.contains('pan-sidebar-off'))) return false;
+  if (typeof globalThis.matchMedia !== 'function') return false;
+  try { return globalThis.matchMedia('(min-width: 769px)').matches; } catch (_) { return false; }
+}
+
+/** Put the control pane in the sidebar's place, or in the deck. */
+export function placeControl() {
+  if (!_deck) return;
+  const { control, root } = _deck;
+  const html = document.documentElement;
+  const sb = _byId('sidebar');
+  if (sidebarShowing()) {
+    if (control.parentNode !== sb) {
+      const before = _byId('sidebar-user-bar');
+      if (before && before.parentNode === sb) sb.insertBefore(control, before);
+      else sb.appendChild(control);
+    }
+    if (html) html.classList.add('apollo-docked');
+    root.classList.add('rail-out');
+  } else {
+    if (control.parentNode !== root) root.insertBefore(control, root.firstChild || null);
+    if (html) html.classList.remove('apollo-docked');
+    root.classList.remove('rail-out');
+  }
+}
+
+function _watchPlace() {
+  const again = () => placeControl();
+  const offs = [];
+  if (typeof globalThis.MutationObserver === 'function') {
+    const mo = new globalThis.MutationObserver(again);
+    const sb = _byId('sidebar');
+    if (sb) mo.observe(sb, { attributes: true, attributeFilter: ['class'] });
+    if (document.documentElement) mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    offs.push(() => mo.disconnect());
+  }
+  if (typeof globalThis.matchMedia === 'function') {
+    try {
+      const mq = globalThis.matchMedia('(min-width: 769px)');
+      mq.addEventListener?.('change', again);
+      offs.push(() => mq.removeEventListener?.('change', again));
+    } catch (_) { /* no media queries: the pane stays in the deck */ }
+  }
+  return () => offs.forEach((f) => f());
 }
 
 // ── Needs you ──────────────────────────────────────────────────────────────
@@ -332,8 +489,8 @@ function _drawGoal(task, team) {
     ask.appendChild(_answerBox(task));
     board.appendChild(ask);
   } else if (task.state === 'done' && task.outcome) {
-    const done = _section('Outcome');
-    done.appendChild(_el('p', 'apo-card-line', task.outcome));
+    const done = _section('Outcome', 'apo-deck-outcome');
+    done.appendChild(renderText(_el('div', 'apo-card-line'), task.outcome));
     board.appendChild(done);
   } else if (task.next_step) {
     const next = _section('Next');
@@ -404,6 +561,8 @@ export async function refresh() {
   _deck.status.textContent = '';
   _drawRail(tasks);
   _drawNeeds(tasks, approvals);
+  _drawMail();
+  _drawChats().catch(() => { /* the goals still draw */ });
   if (_goal) {
     let task = tasks.find((x) => x.id === _goal);
     let team = null;
@@ -455,16 +614,57 @@ export function mountDeck() {
   root.id = DECK_ID;
   root.setAttribute('aria-label', 'Apollo');
 
-  const rail = _el('aside', 'apo-deck-rail');
-  rail.setAttribute('aria-label', 'Goals');
-  const railHead = _el('div', 'apo-deck-rail-h');
-  railHead.appendChild(_btn('apo-home', 'Home', () => openGoal(null), 'Apollo home'));
+  // Apollo's control pane: goals, then the person's other chats and mail.
+  const control = _el('aside', 'apo-deck-rail apo-control');
+  control.id = 'apollo-control';
+  control.setAttribute('aria-label', 'Apollo');
   const { form, title } = _newGoalForm();
-  railHead.appendChild(_btn('apo-primary', 'New goal', () => { form.hidden = !form.hidden; if (!form.hidden) title.focus(); }));
-  rail.appendChild(railHead);
-  rail.appendChild(form);
+  const newGoal = _btn('apo-primary apo-newgoal-b', 'New goal', () => { form.hidden = !form.hidden; if (!form.hidden) title.focus(); });
+  newGoal.insertBefore(_icon(PLUS), newGoal.firstChild);
+  control.appendChild(newGoal);
+  control.appendChild(form);
+  const home = _el('button', 'apo-nav apo-home');
+  home.type = 'button';
+  home.setAttribute('aria-label', 'Apollo home');
+  home.appendChild(_icon(HOME));
+  home.appendChild(_el('span', 'apo-nav-t', 'Home'));
+  home.addEventListener('click', () => openGoal(null));
+  control.appendChild(home);
+  const goalsSec = _el('section', 'apo-ctl-sec');
+  goalsSec.appendChild(_el('h4', 'apo-ctl-t', 'Goals'));
   const railList = _el('div', 'apo-deck-goals');
-  rail.appendChild(railList);
+  goalsSec.appendChild(railList);
+  control.appendChild(goalsSec);
+
+  const chats = _el('section', 'apo-ctl-sec apo-ctl-chats');
+  chats.hidden = true;
+  const chatsHead = _el('div', 'apo-ctl-h');
+  chatsHead.appendChild(_el('h4', 'apo-ctl-t', 'Chats'));
+  const search = _iconBtn('apo-ctl-act', SEARCH, 'Search chats', () => _press('sidebar-search-btn'));
+  const all = _iconBtn('apo-ctl-act', LIST, 'All chats', () => { import('./sessions.js').then((S) => S.openLibrary?.()).catch(() => {}); });
+  chatsHead.appendChild(search);
+  chatsHead.appendChild(all);
+  chats.appendChild(chatsHead);
+  const chatList = _el('div', 'apo-ctl-list');
+  chats.appendChild(chatList);
+  control.appendChild(chats);
+
+  const mail = _el('section', 'apo-ctl-sec apo-ctl-mail');
+  mail.hidden = true;
+  const mailHead = _el('div', 'apo-ctl-h');
+  mailHead.appendChild(_el('h4', 'apo-ctl-t', 'Email'));
+  mailHead.appendChild(_iconBtn('apo-ctl-act', PLUS, 'Compose email', () => _press('email-compose-btn')));
+  mail.appendChild(mailHead);
+  const inbox = _el('button', 'apo-nav apo-inbox');
+  inbox.type = 'button';
+  inbox.appendChild(_icon(MAIL));
+  inbox.appendChild(_el('span', 'apo-nav-t', 'Inbox'));
+  const mailCount = _el('span', 'apo-count apo-nav-n');
+  mailCount.hidden = true;
+  inbox.appendChild(mailCount);
+  inbox.addEventListener('click', () => _press('email-section-title'));
+  mail.appendChild(inbox);
+  control.appendChild(mail);
 
   const board = _el('div', 'apo-deck-board');
   board.setAttribute('aria-live', 'polite');
@@ -481,15 +681,17 @@ export function mountDeck() {
   const status = _el('p', 'apo-deck-status');
   status.setAttribute('role', 'status');
 
-  root.appendChild(rail);
+  root.appendChild(control);
   root.appendChild(board);
   root.appendChild(needs);
   root.appendChild(status);
   if (history && history.parentNode === host) host.insertBefore(root, history);
   else host.appendChild(root);
 
-  _deck = { root, railList, board, needsList, needsCount, status };
+  _deck = { root, control, home, railList, chats, chatList, mail, inbox, mailCount, board, needsList, needsCount, status };
   _sigs = {};
+  placeControl();
+  _watch = _watchPlace();
   _offSpace = Sp.onSpaceChange(() => { _sigs = {}; openGoal(null); });
   refresh();
   _loop();
@@ -503,6 +705,9 @@ export function unmountDeck() {
   _gen += 1;
   if (_chat) { _chat.destroy(); _chat = null; }
   if (_offSpace) { _offSpace(); _offSpace = null; }
+  if (_watch) { _watch(); _watch = null; }
+  _deck?.control.remove();
+  document.documentElement?.classList.remove('apollo-docked');
   _deck?.root.remove();
   _deck = null;
   _goal = null;

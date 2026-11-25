@@ -135,10 +135,17 @@ export function chatEntries(history) {
     if (meta.hidden) continue;
     const text = _textOf(m.content).trim();
     if (!text) continue;
-    out.push({ role: m.role, text, id: meta._db_id || null });
+    // The line a lead's run starts from is Apollo's handoff, not the person's
+    // words: it showed as "You" saying it (owner's test, 2026-11-24).
+    const role = m.role === 'user' && text === APOLLO_KICKOFF ? 'apollo' : m.role;
+    out.push({ role, text, id: meta._db_id || null });
   }
   return out;
 }
+
+/** The prompt a lead's run starts from (`src/apollo/runs.py`
+ *  `APOLLO_TASK_PROMPT`; a test keeps the two the same). */
+export const APOLLO_KICKOFF = 'Do the goal Apollo handed you, now, and finish with your report.';
 
 /** Split what a `chat_stream` reply has sent so far into its `data:` events.
  *  Returns `{ events, rest }`: whole events parsed as JSON (a line that isn't

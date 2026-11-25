@@ -42,11 +42,11 @@
                           brandColor:'#f3b23f', brandMixTo:'#ffc96a', toggleActive:'#f3b23f' } } };
       }
       // The finish (`applyFinish()` in static/js/theme.js, `static/hairline.css`):
-      // the one saved with the theme, else the preset's own — hairline for the
-      // two Pantheon presets, glass for every other theme.
+      // the one saved with the theme, else hairline, which every theme opens in
+      // (`DEFAULT_FINISH`); glass is a pick in Customize -> Finish.
       document.documentElement.setAttribute('data-ck-finish',
         (t.finish === 'glass' || t.finish === 'hairline') ? t.finish
-          : (/^pantheon(light)?$/.test(t.name) ? 'hairline' : 'glass'));
+          : 'hairline');
       if (t && t.colors) {
         var s = document.documentElement.style;
         var c = t.colors;

@@ -51962,7 +51962,22 @@ button.apo-card:hover { background: var(--ctl-tint-2); }
 }
 .apo-msg-you .apo-msg-t { background: var(--ctl-accent); color: var(--ctl-on-accent); }
 .apo-msg-live .apo-msg-t { color: var(--ctl-text-2); }
+/* Chat or Apollo (`static/js/modeSwitch.js`); `cockpit.css` gives it the pill. */
+.pan-modes { display: inline-flex; flex: none; gap: 2px; }
+.pan-mode-btn { padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--fg); cursor: pointer; font: inherit; font-size: 12px; }
+.pan-mode-btn.active { background: var(--card); }
+
 .apo-chat-ask:empty { display: none; }
+/* A lead's report drawn as a report (`apolloText.js`), and Apollo's handoff
+   that started the lead's run, as a line rather than a bubble. */
+.apo-tx { display: flex; flex-direction: column; gap: 6px; white-space: normal; }
+.apo-tx-h { margin: 6px 0 0; font-weight: 600; }
+.apo-tx-h:first-child { margin-top: 0; }
+.apo-tx-p { margin: 0; }
+.apo-tx-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
+.apo-tx-code { font-family: var(--font-mono, ui-monospace, monospace); font-size: .92em; padding: 0 4px; border-radius: 5px; background: var(--ctl-tint); }
+.apo-tx-pre { margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--ctl-tint); overflow-x: auto; font-size: 12px; white-space: pre; }
+.apo-msg-handoff { margin: 0; align-self: center; font-size: 11px; color: var(--ctl-text-3); }
 .apo-chat-ask .apo-need { padding: 8px; border-radius: 10px; background: var(--ctl-tint); display: flex; flex-direction: column; gap: 6px; }
 .apo-chat-form { display: flex; gap: 6px; align-items: flex-end; }
 .apo-chat-form[hidden] { display: none; }

@@ -28,14 +28,19 @@
 //     nothing", so the work is the page now, and the chat is Apollo's command
 //     line under it. The pane stays one press away on the bar.
 //   - Its own composer prompt.
-// Leaving the chat puts every one of those back.
+//   - Apollo's control pane in the sidebar's place (`apolloDeck.js`
+//     `placeControl`): goals, the person's other chats and their mail, so the
+//     generic sidebar's list is put away while Apollo is up.
+// Leaving the chat puts every one of those back. The Chat / Apollo switch at
+// the end of the top bar (`modeSwitch.js`) is lit from `html.apollo-view`, so
+// both moves below tell it.
 
 const BAR_ID = 'apollo-bar';
 const PROMPT = 'Tell Apollo what you need';
 
 const SUN = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg>';
 const PANE = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M14.5 4.5v15"/></svg>';
-const GEAR = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>';
+const GEAR = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>';
 
 let _on = false;
 let _priorMode = null;        // 'chat' when the person had Chat mode on before Apollo
@@ -112,6 +117,10 @@ function _mountDeck() {
   import('./apolloDeck.js').then((m) => { if (_on) m.mountDeck(); }).catch(() => { /* the bar and the chat still work */ });
 }
 
+function _syncSwitch() {
+  import('./modeSwitch.js').then((m) => m.syncModeSwitch()).catch(() => { /* no switch drawn */ });
+}
+
 function _unmountDeck() {
   import('./apolloDeck.js').then((m) => m.unmountDeck()).catch(() => { /* nothing was mounted */ });
 }
@@ -148,6 +157,7 @@ export function enterApolloView(hooks = {}) {
     _mountDeck();
   }
   _on = true;
+  _syncSwitch();
 }
 
 /** Put the generic chat page back. */
@@ -163,6 +173,7 @@ export function leaveApolloView() {
   if (input && _priorPrompt !== null) input.placeholder = _priorPrompt;
   _priorPrompt = null;
   import('./apolloPane.js').then((m) => { if (m.isApolloPaneOpen()) m.closeApolloPane(); }).catch(() => {});
+  _syncSwitch();
 }
 
 export function isApolloView() { return _on; }
