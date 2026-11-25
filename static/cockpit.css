@@ -3194,6 +3194,20 @@ html.cockpit.apollo-view .chat-top-bar #current-meta-count,
 html.cockpit.apollo-view .chat-top-bar #session-cost-display,
 html.cockpit.apollo-view #export-delete-btn { display: none !important; }
 
+/* Chat or Apollo (`static/js/modeSwitch.js`): the same pill as Agent / Chat,
+   at the end of the chat's top bar in both modes. */
+html.cockpit .pan-modes {
+  display: inline-flex; flex: none; padding: 3px; border-radius: 999px; background: var(--ck-tint); gap: 0;
+}
+html.cockpit .pan-mode-btn {
+  display: inline-flex; align-items: center; padding: 4px 12px; border: 0; border-radius: 999px; margin: 0;
+  font: 500 12px/1.4 var(--ck-font-ui); color: var(--ck-text-3); background: transparent; cursor: pointer;
+  transition: all var(--ck-t) var(--ck-ease);
+}
+html.cockpit .pan-mode-btn:not(.active):hover { color: var(--ck-text-2); }
+html.cockpit .pan-mode-btn.active { background: var(--ck-glass-strong); color: var(--ck-text); }
+html.cockpit .pan-mode-btn:focus-visible { outline: 2px solid var(--ck-accent); outline-offset: 1px; }
+
 html.cockpit .apo-bar {
   display: flex; align-items: center; gap: 10px; flex: 1 1 auto; min-width: 0;
   padding: 2px 4px; color: var(--ck-text, var(--fg));

@@ -67,10 +67,13 @@ def get(db, owner: str, task_id: Any):
 
 def create(db, owner: str, *, title: Any, brief: Any = None, kind: Any = None,
            parent_id: Any = None, lead_agent: Any = None, budget_tokens: Any = None,
-           started_by: str = "person", pick=None, space_id: Any = None):
-    """A new task for `owner`. Its lead is the agent named, if it exists for
-    this person, or else the roster's best fit (`lead.pick_lead`); with no fit
-    the task still starts, led by Apollo, and says the roster has a gap."""
+           started_by: str = "person", pick=None, space_id: Any = None, lead: Any = None):
+    """A new task for `owner`. Its lead is the saved agent named, if it exists
+    for this person, or else one Apollo writes for this goal
+    (`goal_lead.write`, from `lead`: {name, role, steps, tools}). The owner's
+    direction, 2026-11-24: leads are made per goal, "not individual bots
+    assigned off rip". `pick(owner, text)` stands in for the writer (tests).
+    When no lead can be written the task still starts, led by Apollo."""
     from core.database import ApolloTask
     if not owner:
         raise ApolloRefused("Tasks belong to a signed-in person.", 403)
@@ -85,6 +88,8 @@ def create(db, owner: str, *, title: Any, brief: Any = None, kind: Any = None,
     if parent is not None and (parent.space_id or None) != space:
         raise ApolloRefused("A sub-task lives in its parent's space.", 409)
     tokens = B.check_person_budget(budget_tokens)
+    task_id = str(uuid.uuid4())
+    spec = lead
     lead = None
     note = None
     if lead_agent:
@@ -95,13 +100,17 @@ def create(db, owner: str, *, title: Any, brief: Any = None, kind: Any = None,
         lead = manifest.id
     else:
         if pick is None:
-            from src.apollo.lead import pick_lead as pick
+            from src.apollo import goal_lead
+
+            def pick(_owner, _text):
+                m = goal_lead.write(_owner, task_id, title=title, brief=brief, spec=spec)
+                return {"id": m.id} if m is not None else None
         found = pick(owner, " ".join(x for x in (title, kind or "", brief or "") if x))
         if found:
             lead = found["id"]
         else:
-            note = "No agent in the roster fits this yet, so Apollo leads it."
-    task = ApolloTask(id=str(uuid.uuid4()), owner=owner, space_id=space,
+            note = "No lead could be written for this yet, so Apollo leads it."
+    task = ApolloTask(id=task_id, owner=owner, space_id=space,
                       title=title, brief=brief, kind=kind,
                       parent_id=parent.id if parent else None, state="working",
                       lead_agent=lead, budget_tokens=tokens, spent_tokens=0,

@@ -125,6 +125,11 @@ def get_agent(owner: Optional[str], agent_id: str, *, shipped_root: Optional[str
     """One agent as this person sees it, or `None`."""
     if not agent_id or "/" in agent_id or "\\" in agent_id or agent_id.startswith("."):
         return None
+    # A lead Apollo wrote for one of this person's goals (`src/apollo/goal_lead.py`):
+    # theirs to run, never listed in the roster or the hall.
+    from src.apollo import goal_lead
+    if goal_lead.is_goal_lead(agent_id):
+        return goal_lead.get(owner, agent_id, data_dir=data_dir)
     for root, source in ((own_root(owner, data_dir), "own"), (shipped_root or SHIPPED_ROOT, "shipped"),
                          (platform_root(data_dir), "platform")):
         got = _read(os.path.join(root, agent_id, MANIFEST_NAME), source)

@@ -173,20 +173,22 @@ def _refuse_in_chain(db, owner: str, parent, to_agent: str) -> List[Any]:
 
 
 def hand_off(db, owner: str, parent, *, from_agent: str, to_agent: Any, brief: Any, via: str = "delegate",
-             review_by: Any = None, title: Any = None):
-    """A child task led by `to_agent`. `via` is delegate or ask. Answers the
-    child; its run is the caller's to start."""
+             review_by: Any = None, title: Any = None, lead: Any = None):
+    """A child task led by `to_agent`, a saved agent, or, with none named, by
+    a teammate written for it (`goal_lead`, from `lead`: {name, role, steps,
+    tools}; owner's direction 2026-11-24: a team made per goal). `via` is
+    delegate or ask. Answers the child; its run is the caller's to start."""
     from core.database import ApolloFleetLink
     from src.agents.catalogue import get_agent
     if via not in ("delegate", "ask"):
         raise ApolloRefused("A hand-off is a delegate or an ask.")
     to_agent = str(to_agent or "").strip()
-    if not to_agent:
-        raise ApolloRefused("Name the agent to hand it to.")
-    m = get_agent(owner, to_agent)
-    if m is None:
-        raise ApolloRefused(f"There's no {to_agent} in the roster. If the goal needs one, propose it "
-                            f"(propose_agent) and say what it would do.", 404)
+    m = None
+    if to_agent:
+        m = get_agent(owner, to_agent)
+        if m is None:
+            raise ApolloRefused(f"There's no {to_agent} in the roster. Leave the agent out and a "
+                                f"teammate is written for the job.", 404)
     brief = _clip(brief, T.BRIEF_MAX)
     if not brief:
         raise ApolloRefused("A hand-off needs a brief: what to do and what to bring back.")
@@ -196,11 +198,21 @@ def hand_off(db, owner: str, parent, *, from_agent: str, to_agent: Any, brief: A
             raise ApolloRefused("No agent reviews its own work. Pick another reviewer, or the person.", 409)
         if get_agent(owner, review_by) is None:
             raise ApolloRefused(f"There's no {review_by} in the roster to review it.", 404)
-    _refuse_in_chain(db, owner, parent, m.id)
+    _refuse_in_chain(db, owner, parent, m.id if m is not None else "")
     ceiling = _held(db, owner, parent)
-    head = title or (f"{m.name}: " + brief.splitlines()[0])
-    child = T.create(db, owner, title=_clip(head, T.TITLE_MAX), brief=brief, kind=parent.kind,
-                     parent_id=parent.id, lead_agent=m.id, started_by="apollo", space_id=parent.space_id)
+    if m is not None:
+        head = title or (f"{m.name}: " + brief.splitlines()[0])
+        child = T.create(db, owner, title=_clip(head, T.TITLE_MAX), brief=brief, kind=parent.kind,
+                         parent_id=parent.id, lead_agent=m.id, started_by="apollo", space_id=parent.space_id)
+    else:
+        child = T.create(db, owner, title=_clip(title or brief.splitlines()[0], T.TITLE_MAX), brief=brief,
+                         kind=parent.kind, parent_id=parent.id, started_by="apollo",
+                         space_id=parent.space_id, lead=lead)
+        m = get_agent(owner, child.lead_agent) if child.lead_agent else None
+        if m is None:
+            db.delete(child)
+            db.flush()
+            raise ApolloRefused("A teammate couldn't be written for that. Do it yourself.", 409)
     db.add(ApolloFleetLink(task_id=child.id, owner=owner, goal_id=root_of(db, parent).id,
                            from_agent=from_agent, via=via, review_by=review_by,
                            ceiling=json.dumps(ceiling), rounds=0))
