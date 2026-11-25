@@ -218,6 +218,25 @@ def _secure_cookie(request: Request) -> bool:
     return request.url.scheme == "https" or forwarded_proto.strip().lower() == "https"
 
 
+_WORKSPACE_TASKS: set = set()
+
+
+def _make_their_workspace(username: str, auth_manager) -> None:
+    """A new account's own workspace (their workstation home), made now and
+    not at their first tool call (the owner, 2026-11-25). Started beside the
+    answer, never ahead of it: a workstation that is slow or down doesn't hold
+    up making the account, and the next tool call makes the home instead."""
+    try:
+        from src.workstation_access import provision_home
+        task = asyncio.get_running_loop().create_task(
+            provision_home(username, auth_manager=auth_manager))
+    except Exception as e:  # noqa: BLE001
+        logger.info("could not start making %r's workspace: %s", username, e)
+        return
+    _WORKSPACE_TASKS.add(task)
+    task.add_done_callback(_WORKSPACE_TASKS.discard)
+
+
 def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
     router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -340,6 +359,7 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
             raise HTTPException(409, "Username already taken")
         if profile:
             await asyncio.to_thread(auth_manager.update_profile, body.username, profile)
+        _make_their_workspace(body.username, auth_manager)
         await _audit("user_create", actor=body.username, subject=body.username,
                      detail={"via": "signup", "is_admin": False})
         return {"ok": True, "message": "Account created"}
@@ -677,6 +697,7 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
                          outcome="error",
                          detail={"via": "admin", "reason": "username_taken"})
             raise HTTPException(409, "Username already taken")
+        _make_their_workspace(body.username, auth_manager)
         await _audit("user_create", actor=user, subject=body.username,
                      detail={"via": "admin", "is_admin": bool(body.is_admin)})
         return {"ok": True}
