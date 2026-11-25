@@ -136,13 +136,41 @@ def _fit_line(fit: Any) -> Optional[str]:
                  f"well with the fleet tool rather than doing that part yourself.", STEP_MAX)
 
 
+# A written lead's name says what kind of lead it is, in two words. The owner's
+# test (2026-11-25) showed "Lead: <the goal's title>" on every card, the rail
+# and the chat, the title said again in each place. The goal's title already
+# says what; the lead's name says who. First match wins; "Goal lead" otherwise.
+ROLE_NAMES = (
+    ("Research lead", r"research|find|look\s*up|compare|investigat\w*|stud(y|ies)|survey|analy[sz]\w*|review"),
+    ("Writing lead", r"write|draft|blog|post|e-?mail|docs?|document\w*|readme|copy|letter|essay"),
+    ("Design lead", r"design|ui|ux|layout|mock-?ups?|theme|logo|style"),
+    ("Ops lead", r"deploy\w*|server|renew\w*|certificate|backups?|install\w*|upgrade|network|dns|vm|docker|ci"),
+    ("Build lead", r"code|fix|bugs?|build|implement|refactor|tests?|script|repo|feature|app"),
+    ("Data lead", r"data|report|chart|metrics?|csv|spreadsheet|numbers|budget"),
+    ("Planning lead", r"plan|schedule|organi[sz]e|roadmap|trip|event|prepare|prep"),
+)
+_ROLE_RES = tuple((name, re.compile(rf"\b(?:{words})\b", re.I)) for name, words in ROLE_NAMES)
+
+
+OLD_NAME_PREFIX = "Lead: "
+
+
+def role_name(title: Any, brief: Any = None) -> str:
+    """A short name for a goal's lead, from what the goal is about."""
+    for text in (_line(title, 200), _line(brief, 2000)):
+        for name, pattern in _ROLE_RES:
+            if text and pattern.search(text):
+                return name
+    return "Goal lead"
+
+
 def fields(task_id: Any, *, title: Any, brief: Any = None, spec: Any = None, fit: Any = None) -> Dict[str, Any]:
     """The lead's fields, from Apollo's `spec` ({name, role, steps, tools}) and
     the goal. `fit` is the saved agent that best fits it (`lead.pick_lead`),
     named in the runbook as the teammate to hand to."""
     spec = spec if isinstance(spec, dict) else {}
     title = _line(title, 200) or "this goal"
-    name = _line(spec.get("name"), NAME_MAX) or _line(f"Lead: {title}", NAME_MAX)
+    name = _line(spec.get("name"), NAME_MAX) or role_name(title, brief)
     role = _line(spec.get("role"), ROLE_MAX) or _line(f"Leads the goal “{title}” to done.", ROLE_MAX)
     kit = _kit(spec.get("tools"))
     return {"id": lead_id(task_id), "name": name, "tagline": role, "section": "personal-home",
@@ -205,5 +233,12 @@ def get(owner: Optional[str], agent_id: Any, *, data_dir: Optional[str] = None):
     from src.agents.catalogue import _read
     from src.agents.manifest import Manifest
     got = _read(_path(owner, str(agent_id), data_dir), "own")
-    return got if isinstance(got, Manifest) and got.id == agent_id else None
+    if not (isinstance(got, Manifest) and got.id == agent_id):
+        return None
+    if got.name.startswith(OLD_NAME_PREFIX):
+        # A lead written before short names (2026-11-25) answers to its role
+        # name too, so a goal already under way stops saying its title twice.
+        from dataclasses import replace
+        got = replace(got, name=role_name(got.name[len(OLD_NAME_PREFIX):]))
+    return got
 

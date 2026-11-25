@@ -257,7 +257,17 @@ def setup_apollo_routes() -> APIRouter:
         out = await _call(lambda db: _led(owner, tasks.to_dict(write(db), budget_cap=B.admin_cap())))
         if holder.get("run"):
             from src.apollo.tool import start_run
-            await start_run(holder["run"])
+            if not await start_run(holder["run"]):
+                out = await _not_started(owner, out["id"])
+        return out
+
+    async def _not_started(owner: str, task_id: str) -> Dict[str, Any]:
+        """A run that was asked for and didn't start leaves the goal asking, not Working."""
+        from src.apollo import runs
+        out = await _call(lambda db: _led(owner, tasks.to_dict(runs.did_not_start(db, owner, task_id),
+                                                              budget_cap=B.admin_cap())))
+        if isinstance(out, dict):
+            out["started"] = False
         return out
 
     @router.get("/tasks/{task_id}")
@@ -297,7 +307,10 @@ def setup_apollo_routes() -> APIRouter:
                 await start_run(run)
         if isinstance(out, dict) and holder.get("run"):
             from src.apollo.tool import start_run
-            out["started"] = await start_run(holder["run"])
+            if await start_run(holder["run"]):
+                out["started"] = True
+            else:
+                out = await _not_started(owner, out["id"])
         elif isinstance(out, dict):
             out["started"] = False
             if holder.get("why"):

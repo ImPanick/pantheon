@@ -3250,7 +3250,7 @@ html.cockpit .apo-bar-btn:hover { background: var(--ck-tint, var(--ck-glass-soft
 html.cockpit .apo-deck { display: none; }
 html.cockpit.apollo-view #chat-container { container: apollo / inline-size; }
 html.cockpit.apollo-view .apo-deck {
-  display: grid; gap: 12px; flex: 1 1 auto; min-height: 0; padding: 4px 16px 8px; color: var(--ck-text, var(--fg));
+  display: grid; gap: 12px; flex: 1 1 0; min-height: 0; padding: 4px 16px 8px; color: var(--ck-text, var(--fg));
   grid-template-columns: minmax(220px, 250px) minmax(0, 1fr) minmax(240px, 280px);
   grid-template-areas: "rail board needs" "status status status";
   grid-template-rows: minmax(0, 1fr) auto;
@@ -3288,6 +3288,10 @@ html.cockpit.apollo-view .apo-deck.rail-out {
 /* Nothing needs you: one quiet line, not an empty column's worth of panel. */
 html.cockpit .apo-deck-needs:has(.apo-deck-none) { align-self: start; }
 
+/* The deck takes only the room left once the command line has its own, so the
+   command line is never pushed off the foot of the page (owner's test,
+   2026-11-25: the composer clipped under the board). */
+html.cockpit.apollo-view .chat-container > .chat-input-bar { flex: none !important; }
 html.cockpit.apollo-view .chat-history {
   flex: 0 1 auto !important; max-height: 22vh; min-height: 0; overflow-y: auto; padding-top: 8px;
 }
@@ -3345,6 +3349,11 @@ html.cockpit .apo-ctl-act {
 }
 html.cockpit .apo-ctl-act:hover { background: var(--ck-tint); color: var(--ck-text); }
 html.cockpit .apo-ctl-list { display: flex; flex-direction: column; gap: 1px; }
+/* The pane scrolls; its rows never squeeze. A row squeezed to less than its
+   lines let its second line spill over the next heading (owner's test,
+   2026-11-25: a goal's line over CHATS). */
+html.cockpit .apo-control > *, html.cockpit .apo-ctl-list > *, html.cockpit .apo-deck-goals > *,
+html.cockpit .apo-goal > * { flex-shrink: 0; }
 html.cockpit .apo-newgoal { display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px; }
 html.cockpit .apo-newgoal[hidden] { display: none; }
 html.cockpit .apo-deck-goals { display: flex; flex-direction: column; gap: 4px; }
