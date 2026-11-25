@@ -6,8 +6,8 @@
    the theming." The palette is the theme (`THEMES.pantheon` and
    `THEMES.pantheonlight`, static/js/theme.js); this sheet is the material,
    chosen beside it in the theme editor (Customize → Finish) and stored with
-   the theme. It is on when <html data-ck-finish="hairline">, which the two
-   Pantheon presets open in, and every rule here is scoped to that attribute,
+   the theme. It is on when <html data-ck-finish="hairline">, which every
+   theme opens in (`DEFAULT_FINISH`), and every rule here is scoped to that attribute,
    so the glass finish (`static/cockpit.css` as it shipped) is untouched.
 
    What the site draws, and so what this draws:
@@ -309,6 +309,9 @@ html.cockpit[data-ck-finish="hairline"] .chat-container .msg .body a {
 }
 html.cockpit[data-ck-finish="hairline"] .chat-container .msg .body a:hover { text-decoration-color: var(--ck-hue); }
 html.cockpit[data-ck-finish="hairline"] .msg .body blockquote { border-left-color: color-mix(in oklab, var(--ck-hue) 60%, transparent) !important; }
+/* list numbers and bullets in the theme's accent, as the site marks its lists;
+   the words themselves stay in ink (cockpit.css, "Emphasis in a reply") */
+html.cockpit[data-ck-finish="hairline"] .msg .body li::marker { color: var(--ck-hue); }
 html.cockpit[data-ck-finish="hairline"] .msg-reaction-pill,
 html.cockpit[data-ck-finish="hairline"] .msg-reaction-badge { box-shadow: inset 0 0 0 1px var(--ck-edge-lo); }
 html.cockpit[data-ck-finish="hairline"] .agent-thread { background: transparent; border-color: var(--ck-edge); }
